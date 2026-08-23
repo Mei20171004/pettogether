@@ -122,3 +122,4 @@ google-services.json
 GoogleService-Info.plist
 # Reference copy of the Kate (care-paw) project kept for feature-porting only.
 Katecode/
+functions/node_modules/
