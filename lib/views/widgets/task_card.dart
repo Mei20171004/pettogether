@@ -173,6 +173,8 @@ class TaskCard extends StatelessWidget {
         return Icons.how_to_reg;
       case CareTaskStatus.completed:
         return Icons.verified;
+      case CareTaskStatus.skipped:
+        return Icons.skip_next;
     }
   }
 
@@ -184,6 +186,8 @@ class TaskCard extends StatelessWidget {
         return PawColors.purple;
       case CareTaskStatus.completed:
         return PawColors.green;
+      case CareTaskStatus.skipped:
+        return PawColors.muted;
     }
   }
 
@@ -195,6 +199,8 @@ class TaskCard extends StatelessWidget {
         return PawColors.lavender.withValues(alpha: 0.92);
       case CareTaskStatus.completed:
         return PawColors.green.withValues(alpha: 0.10);
+      case CareTaskStatus.skipped:
+        return Colors.white.withValues(alpha: 0.55);
     }
   }
 
@@ -264,6 +270,9 @@ class TaskCard extends StatelessWidget {
           AppLanguage.korean => '$name님이 완료',
           AppLanguage.english => 'Done by $name',
         };
+      case CareTaskStatus.skipped:
+        return L10n.text(language, 'Skipped for today', '今日はスキップ済み',
+            '今天已跳过', '오늘은 건너뜀');
     }
   }
 
@@ -300,6 +309,8 @@ class _ActionButtons extends StatelessWidget {
         }
         return const SizedBox.shrink();
       case CareTaskStatus.completed:
+        return const SizedBox.shrink();
+      case CareTaskStatus.skipped:
         return const SizedBox.shrink();
     }
   }

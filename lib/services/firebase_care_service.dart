@@ -1073,6 +1073,8 @@ class FirebaseCareService implements CareService {
         );
       case CareTaskStatus.completed:
         throw const CareServiceError(CareServiceErrorType.taskAlreadyCompleted);
+      case CareTaskStatus.skipped:
+        throw const CareServiceError(CareServiceErrorType.invalidTransition);
       case null:
         throw const CareServiceError(CareServiceErrorType.invalidTransition);
     }

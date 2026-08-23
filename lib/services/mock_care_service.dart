@@ -523,6 +523,8 @@ class MockCareService implements CareService {
         }
       case CareTaskStatus.completed:
         throw const CareServiceError(CareServiceErrorType.taskAlreadyCompleted);
+      case CareTaskStatus.skipped:
+        throw const CareServiceError(CareServiceErrorType.invalidTransition);
     }
 
     final updated = task.copyWith(
@@ -588,6 +590,8 @@ class MockCareService implements CareService {
         );
       case CareTaskStatus.completed:
         throw const CareServiceError(CareServiceErrorType.taskAlreadyCompleted);
+      case CareTaskStatus.skipped:
+        throw const CareServiceError(CareServiceErrorType.invalidTransition);
     }
   }
 

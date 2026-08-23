@@ -39,6 +39,11 @@ List<int> _weekdaysFromJson(dynamic value) {
   return List<int>.from(<int>[1, 2, 3, 4, 5, 6, 7]);
 }
 
+List<String> _stringListFromJson(dynamic value) {
+  if (value is List) return value.whereType<String>().toList();
+  return const [];
+}
+
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
@@ -46,7 +51,8 @@ List<int> _weekdaysFromJson(dynamic value) {
 enum CareTaskStatus {
   unclaimed('unclaimed'),
   claimed('claimed'),
-  completed('completed');
+  completed('completed'),
+  skipped('skipped');
 
   const CareTaskStatus(this.rawValue);
   final String rawValue;
@@ -61,6 +67,8 @@ enum CareTaskStatus {
         return CareTaskStatus.claimed;
       case 'completed':
         return CareTaskStatus.completed;
+      case 'skipped':
+        return CareTaskStatus.skipped;
       default:
         throw FormatException('Unknown care task status: $value');
     }
@@ -95,7 +103,16 @@ enum PetType {
   dog('dog'),
   bird('bird'),
   rabbit('rabbit'),
-  snake('snake');
+  snake('snake'),
+  fish('fish'),
+  hamster('hamster'),
+  guineaPig('guineaPig'),
+  ferret('ferret'),
+  turtle('turtle'),
+  reptile('reptile'),
+  amphibian('amphibian'),
+  horse('horse'),
+  other('other');
 
   const PetType(this.rawValue);
   final String rawValue;
@@ -314,6 +331,7 @@ class Household {
     required this.inviteCode,
     this.pets = const [],
     this.timeZoneIdentifier = '',
+    this.ownerID,
   });
 
   final String id;
@@ -321,6 +339,10 @@ class Household {
   final String inviteCode;
   final List<Pet> pets;
   final String timeZoneIdentifier;
+
+  /// The Firestore user id of the household owner. Null on legacy documents
+  /// created before this field existed (falls back to the sole member).
+  final String? ownerID;
 
   /// Convenience accessors backed by the first pet (used across the app for
   /// single-pet copy). Prefer iterating [pets] for the full pet list.
@@ -332,6 +354,7 @@ class Household {
     List<Pet>? pets,
     String? inviteCode,
     String? timeZoneIdentifier,
+    String? ownerID,
   }) {
     return Household(
       id: id,
@@ -339,6 +362,7 @@ class Household {
       inviteCode: inviteCode ?? this.inviteCode,
       pets: pets ?? this.pets,
       timeZoneIdentifier: timeZoneIdentifier ?? this.timeZoneIdentifier,
+      ownerID: ownerID ?? this.ownerID,
     );
   }
 
@@ -354,6 +378,7 @@ class Household {
               .toList()
           : _legacyPetsFromJson(json),
       timeZoneIdentifier: _stringFromJson(json['timeZoneIdentifier']) ?? '',
+      ownerID: _stringFromJson(json['ownerID']),
     );
   }
 
@@ -375,6 +400,7 @@ class Household {
         'inviteCode': inviteCode,
         'pets': pets.map((e) => e.toJson()).toList(),
         'timeZoneIdentifier': timeZoneIdentifier,
+        'ownerID': ownerID,
       };
 }
 
@@ -447,6 +473,7 @@ class CareRoutine {
     this.weekdays = const [1, 2, 3, 4, 5, 6, 7],
     this.interval = 1,
     this.petID,
+    this.petIds = const [],
     required this.hour,
     required this.minute,
     required this.startDate,
@@ -463,7 +490,17 @@ class CareRoutine {
   final CareRoutineFrequency frequency;
   final List<int> weekdays;
   final int interval;
+
+  /// Legacy single-pet pointer; kept for backward compatibility.
   final String? petID;
+
+  /// Pets this routine applies to. Empty means every household pet (legacy).
+  final List<String> petIds;
+
+  /// Pets this routine applies to, honouring the legacy [petID] fallback.
+  List<String> get effectivePetIds =>
+      petIds.isNotEmpty ? petIds : (petID == null ? const [] : [petID!]);
+
   final int hour;
   final int minute;
   final DateTime startDate;
@@ -485,6 +522,7 @@ class CareRoutine {
         weekdays: _weekdaysFromJson(json['weekdays']),
         interval: _intFromJson(json['interval'], 1),
         petID: _stringFromJson(json['petID']),
+        petIds: _stringListFromJson(json['petIds']),
         hour: _intFromJson(json['hour']),
         minute: _intFromJson(json['minute']),
         startDate:
@@ -505,6 +543,7 @@ class CareRoutine {
         'weekdays': weekdays,
         'interval': interval,
         'petID': petID,
+        'petIds': petIds,
         'hour': hour,
         'minute': minute,
         'startDate': _dateToJson(startDate),
@@ -525,6 +564,7 @@ class CareTask {
     this.priority = CarePriority.normal,
     this.routineID,
     this.petID,
+    this.petIds = const [],
     this.status = CareTaskStatus.unclaimed,
     this.assignmentRequest,
     this.assigneeID,
@@ -546,7 +586,17 @@ class CareTask {
   final CareTaskKind kind;
   final CarePriority priority;
   final String? routineID;
+
+  /// Legacy single-pet pointer; kept for backward compatibility.
   final String? petID;
+
+  /// Pets this task applies to. Empty means every household pet (legacy).
+  final List<String> petIds;
+
+  /// Pets this task applies to, honouring the legacy [petID] fallback.
+  List<String> get effectivePetIds =>
+      petIds.isNotEmpty ? petIds : (petID == null ? const [] : [petID!]);
+
   final CareTaskStatus status;
   final AssignmentRequest? assignmentRequest;
   final String? assigneeID;
@@ -581,6 +631,7 @@ class CareTask {
       priority: priority,
       routineID: routineID,
       petID: petID,
+      petIds: petIds,
       status: status ?? this.status,
       assignmentRequest: clearAssignmentRequest
           ? null
@@ -610,6 +661,7 @@ class CareTask {
         priority: CarePriority.fromRaw(json['priority'] as String? ?? 'normal'),
         routineID: _stringFromJson(json['routineID']),
         petID: _stringFromJson(json['petID']),
+        petIds: _stringListFromJson(json['petIds']),
         status: CareTaskStatus.fromRaw(json['status'] as String? ?? 'unclaimed'),
         assignmentRequest: json['assignmentRequest'] == null
             ? null
@@ -637,6 +689,7 @@ class CareTask {
         'priority': priority.rawValue,
         'routineID': routineID,
         'petID': petID,
+        'petIds': petIds,
         'status': status.rawValue,
         'assignmentRequest': assignmentRequest?.toJson(),
         'assigneeID': assigneeID,
@@ -657,4 +710,164 @@ class CareSession {
 
   final Household household;
   final Caregiver caregiver;
+}
+
+// ---------------------------------------------------------------------------
+// Invitations & join requests (Kate flow: link/QR + owner approval)
+// ---------------------------------------------------------------------------
+
+enum InvitationStatus {
+  active('active'),
+  claimed('claimed'),
+  approved('approved'),
+  rejected('rejected'),
+  revoked('revoked');
+
+  const InvitationStatus(this.rawValue);
+  final String rawValue;
+
+  static InvitationStatus fromRaw(String value) => InvitationStatus.values
+      .firstWhere((e) => e.rawValue == value, orElse: () => InvitationStatus.active);
+}
+
+enum JoinRequestStatus {
+  pending('pending'),
+  approved('approved'),
+  rejected('rejected');
+
+  const JoinRequestStatus(this.rawValue);
+  final String rawValue;
+
+  static JoinRequestStatus fromRaw(String value) => JoinRequestStatus.values
+      .firstWhere((e) => e.rawValue == value, orElse: () => JoinRequestStatus.pending);
+}
+
+/// A one-time, expiring invitation to a household. The deep link
+/// `copaw://invite/<id>` (also encoded as a QR code) carries the id.
+class HouseholdInvitation {
+  const HouseholdInvitation({
+    required this.id,
+    required this.householdId,
+    required this.householdName,
+    required this.petNames,
+    required this.inviterName,
+    required this.invitedBy,
+    required this.status,
+    required this.createdAt,
+    required this.expiresAt,
+    this.claimedBy,
+    this.claimedName,
+    this.claimedAt,
+    this.reviewedBy,
+    this.reviewedAt,
+  });
+
+  final String id;
+  final String householdId;
+  final String householdName;
+  final List<String> petNames;
+  final String inviterName;
+  final String invitedBy;
+  final InvitationStatus status;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+  final String? claimedBy;
+  final String? claimedName;
+  final DateTime? claimedAt;
+  final String? reviewedBy;
+  final DateTime? reviewedAt;
+
+  String get deepLink => 'copaw://invite/$id';
+
+  bool get isActive =>
+      status == InvitationStatus.active && expiresAt.isAfter(DateTime.now());
+
+  factory HouseholdInvitation.fromJson(Map<String, dynamic> json) =>
+      HouseholdInvitation(
+        id: json['id'] as String,
+        householdId: json['householdId'] as String,
+        householdName: json['householdName'] as String,
+        petNames: _stringListFromJson(json['petNames']),
+        inviterName: json['inviterName'] as String,
+        invitedBy: json['invitedBy'] as String,
+        status: InvitationStatus.fromRaw(json['status'] as String? ?? 'active'),
+        createdAt: _dateFromJson(json['createdAt']) ?? DateTime.now(),
+        expiresAt: _dateFromJson(json['expiresAt']) ??
+            DateTime.now().add(const Duration(days: 1)),
+        claimedBy: _stringFromJson(json['claimedBy']),
+        claimedName: _stringFromJson(json['claimedName']),
+        claimedAt: _dateFromJson(json['claimedAt']),
+        reviewedBy: _stringFromJson(json['reviewedBy']),
+        reviewedAt: _dateFromJson(json['reviewedAt']),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'householdId': householdId,
+        'householdName': householdName,
+        'petNames': petNames,
+        'inviterName': inviterName,
+        'invitedBy': invitedBy,
+        'status': status.rawValue,
+        'createdAt': _dateToJson(createdAt),
+        'expiresAt': _dateToJson(expiresAt),
+        'claimedBy': claimedBy,
+        'claimedName': claimedName,
+        'claimedAt': _dateToJson(claimedAt),
+        'reviewedBy': reviewedBy,
+        'reviewedAt': _dateToJson(reviewedAt),
+      };
+}
+
+/// A pending/approved/rejected request to join a household, created when a
+/// joiner claims an invitation link/QR code.
+class HouseholdJoinRequest {
+  const HouseholdJoinRequest({
+    required this.userId,
+    required this.householdId,
+    required this.invitationId,
+    required this.name,
+    required this.status,
+    required this.createdAt,
+    this.email,
+    this.reviewedBy,
+    this.reviewedAt,
+  });
+
+  final String userId;
+  final String householdId;
+  final String invitationId;
+  final String name;
+  final String? email;
+  final JoinRequestStatus status;
+  final DateTime createdAt;
+  final String? reviewedBy;
+  final DateTime? reviewedAt;
+
+  bool get isPending => status == JoinRequestStatus.pending;
+
+  factory HouseholdJoinRequest.fromJson(Map<String, dynamic> json) =>
+      HouseholdJoinRequest(
+        userId: json['userId'] as String,
+        householdId: json['householdId'] as String,
+        invitationId: json['invitationId'] as String,
+        name: json['name'] as String,
+        email: _stringFromJson(json['email']),
+        status: JoinRequestStatus.fromRaw(json['status'] as String? ?? 'pending'),
+        createdAt: _dateFromJson(json['createdAt']) ?? DateTime.now(),
+        reviewedBy: _stringFromJson(json['reviewedBy']),
+        reviewedAt: _dateFromJson(json['reviewedAt']),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'userId': userId,
+        'householdId': householdId,
+        'invitationId': invitationId,
+        'name': name,
+        'email': email,
+        'status': status.rawValue,
+        'createdAt': _dateToJson(createdAt),
+        'reviewedBy': reviewedBy,
+        'reviewedAt': _dateToJson(reviewedAt),
+      };
 }
