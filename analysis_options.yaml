@@ -18,6 +18,9 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    # The Katecode/ folder is a separate reference project (care-paw) kept for
+    # feature-porting reference; it is not part of this package.
+    - Katecode/**
 
 linter:
   # The lint rules applied to this project can be customized in the
