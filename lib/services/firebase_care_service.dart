@@ -709,6 +709,7 @@ class FirebaseCareService implements CareService {
     payload['createdAt'] = Timestamp.fromDate(invitation.createdAt);
     payload['expiresAt'] = Timestamp.fromDate(invitation.expiresAt);
     await ref.set(payload);
+    await _householdRef(householdID).update({'activeInvitationID': ref.id});
     return invitation;
   }
 
@@ -749,6 +750,9 @@ class FirebaseCareService implements CareService {
       tx.update(ref, {
         'status': InvitationStatus.revoked.rawValue,
         'revokedAt': FieldValue.serverTimestamp(),
+      });
+      tx.update(_householdRef(doc.data()!['householdId'] as String), {
+        'activeInvitationID': FieldValue.delete(),
       });
     });
   }
@@ -853,17 +857,17 @@ class FirebaseCareService implements CareService {
   Future<HouseholdInvitation?> getActiveInvitation(String householdID) async {
     _ensureConfigured();
     await _ensureAuthenticated();
-    final results = await _db
-        .collection('invitations')
-        .where('householdId', isEqualTo: householdID)
-        .where('status', whereIn: [
-          InvitationStatus.active.rawValue,
-          InvitationStatus.claimed.rawValue,
-        ])
-        .limit(1)
-        .get();
-    if (results.docs.isEmpty) return null;
-    return _invitationFrom(results.docs.first);
+    final householdDoc = await _householdRef(householdID).get();
+    final invitationID = householdDoc.data()?['activeInvitationID'] as String?;
+    if (invitationID == null) return null;
+    final doc = await _db.collection('invitations').doc(invitationID).get();
+    if (!doc.exists) return null;
+    final invitation = _invitationFrom(doc);
+    if (invitation.status != InvitationStatus.active &&
+        invitation.status != InvitationStatus.claimed) {
+      return null;
+    }
+    return invitation;
   }
 
   @override
@@ -904,6 +908,9 @@ class FirebaseCareService implements CareService {
         'status': invitationNext.rawValue,
         'reviewedBy': user.uid,
         'reviewedAt': FieldValue.serverTimestamp(),
+      });
+      tx.update(householdRef, {
+        'activeInvitationID': FieldValue.delete(),
       });
       if (approve) {
         tx.set(
