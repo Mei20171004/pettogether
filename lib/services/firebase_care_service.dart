@@ -798,7 +798,9 @@ class FirebaseCareService implements CareService {
         'name': name,
         'email': email,
         'status': JoinRequestStatus.pending.rawValue,
-        'createdAt': Timestamp.fromDate(now),
+        // Server timestamp so the Security Rules' `createdAt == request.time`
+        // claim check passes.
+        'createdAt': FieldValue.serverTimestamp(),
       });
     });
 
