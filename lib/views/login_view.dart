@@ -124,7 +124,7 @@ class _LoginViewState extends State<LoginView> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'pettogetter',
+                      'pettogether',
                       textAlign: TextAlign.center,
                       style: Theme.of(context)
                           .textTheme

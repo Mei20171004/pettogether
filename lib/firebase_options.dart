@@ -14,6 +14,18 @@ import 'package:flutter/foundation.dart'
 ///   options: DefaultFirebaseOptions.currentPlatform,
 /// );
 /// ```
+///
+/// API keys are NOT hardcoded here — they are injected at build time via
+/// `--dart-define` so they never end up in source control. Example:
+///
+/// ```sh
+/// flutter run --dart-define=FIREBASE_ANDROID_API_KEY=... \
+///             --dart-define=FIREBASE_IOS_API_KEY=...
+/// ```
+///
+/// On iOS/Android the native SDKs read their config from
+/// GoogleService-Info.plist / google-services.json, so these defines only
+/// matter when initializing Firebase with explicit Dart options (e.g. web).
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -49,21 +61,26 @@ class DefaultFirebaseOptions {
     }
   }
 
+  static const String _androidApiKey =
+      String.fromEnvironment('FIREBASE_ANDROID_API_KEY');
+  static const String _iosApiKey =
+      String.fromEnvironment('FIREBASE_IOS_API_KEY');
+
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'REDACTED',
-    appId: '1:481739343859:android:66ba7b00bc96318d04b486',
-    messagingSenderId: '481739343859',
-    projectId: 'pettogetter',
-    storageBucket: 'pettogetter.firebasestorage.app',
+    apiKey: _androidApiKey,
+    appId: '1:524031929167:android:dee0c4e8793263762df33a',
+    messagingSenderId: '524031929167',
+    projectId: 'pettogether-76452',
+    storageBucket: 'pettogether-76452.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'REDACTED',
-    appId: '1:481739343859:ios:8aa22af3613e86de04b486',
-    messagingSenderId: '481739343859',
-    projectId: 'pettogetter',
-    storageBucket: 'pettogetter.firebasestorage.app',
-    iosClientId: '481739343859-prit5km7fea7hav8q39k9ov5g9cvcvpj.apps.googleusercontent.com',
-    iosBundleId: 'com.vibecodingjapan.pettogetter',
+    apiKey: _iosApiKey,
+    appId: '1:524031929167:ios:4645c2744a5cbdc62df33a',
+    messagingSenderId: '524031929167',
+    projectId: 'pettogether-76452',
+    storageBucket: 'pettogether-76452.firebasestorage.app',
+    iosClientId: '524031929167-e84g4bplu3qcia416q0gla139mcdbbgj.apps.googleusercontent.com',
+    iosBundleId: 'com.dreambig.pettogether',
   );
 }

@@ -81,6 +81,21 @@ lib/
 `main.dart` initializes Firebase and selects `FirebaseCareService`; if the
 config files are missing it falls back to the mock so the app still opens.
 
+### API keys via environment variables
+
+API keys are never hardcoded in `lib/firebase_options.dart`. Inject them at
+build time with `--dart-define`:
+
+```sh
+flutter run --dart-define=FIREBASE_ANDROID_API_KEY=<android-key> \
+            --dart-define=FIREBASE_IOS_API_KEY=<ios-key>
+```
+
+The native iOS/Android SDKs read their keys from
+`GoogleService-Info.plist` / `google-services.json` (both gitignored), so the
+defines are only required when initializing Firebase with explicit Dart
+options (e.g. web).
+
 The Firestore implementation writes the exact same document shape and
 flattened assignment-request fields as the original, so it interoperates with
 the existing data and rules.

@@ -6,9 +6,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:pettogetter/app.dart';
-import 'package:pettogetter/l10n/l10n.dart';
-import 'package:pettogetter/services/mock_care_service.dart';
+import 'package:pettogether/app.dart';
+import 'package:pettogether/l10n/l10n.dart';
+import 'package:pettogether/services/mock_care_service.dart';
 
 void main() {
   testWidgets('boots into the welcome screen', (WidgetTester tester) async {

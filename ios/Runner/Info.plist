@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>pettogetter</string>
+	<string>pettogether</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>pettogetter</string>
+	<string>pettogether</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -67,7 +67,7 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.481739343859-prit5km7fea7hav8q39k9ov5g9cvcvpj</string>
+	<string>com.googleusercontent.apps.524031929167-e84g4bplu3qcia416q0gla139mcdbbgj</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -75,7 +75,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.481739343859-prit5km7fea7hav8q39k9ov5g9cvcvpj</string>
+				<string>com.googleusercontent.apps.524031929167-e84g4bplu3qcia416q0gla139mcdbbgj</string>
 			</array>
 		</dict>
 	</array>

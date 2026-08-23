@@ -1,27 +1,33 @@
 {
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "flutter": {
     "platforms": {
       "android": {
         "default": {
-          "projectId": "pettogetter",
-          "appId": "1:481739343859:android:66ba7b00bc96318d04b486",
+          "projectId": "pettogether-76452",
+          "appId": "1:524031929167:android:dee0c4e8793263762df33a",
           "fileOutput": "android/app/google-services.json"
         }
       },
       "ios": {
         "default": {
-          "projectId": "pettogetter",
-          "appId": "1:481739343859:ios:8aa22af3613e86de04b486",
+          "projectId": "pettogether-76452",
+          "appId": "1:524031929167:ios:4645c2744a5cbdc62df33a",
           "uploadDebugSymbols": false,
           "fileOutput": "ios/Runner/GoogleService-Info.plist"
         }
       },
       "dart": {
         "lib/firebase_options.dart": {
-          "projectId": "pettogetter",
+          "projectId": "pettogether-76452",
           "configurations": {
-            "android": "1:481739343859:android:66ba7b00bc96318d04b486",
-            "ios": "1:481739343859:ios:8aa22af3613e86de04b486"
+            "android": "1:524031929167:android:dee0c4e8793263762df33a",
+            "ios": "1:524031929167:ios:4645c2744a5cbdc62df33a"
           }
         }
       }

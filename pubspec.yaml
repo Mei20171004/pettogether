@@ -1,5 +1,5 @@
-name: pettogetter
-description: "pettogetter — shared pet care, without the guesswork. A Flutter port of the SwiftUI original."
+name: pettogether
+description: "pettogether — shared pet care, without the guesswork. A Flutter port of the SwiftUI original."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
