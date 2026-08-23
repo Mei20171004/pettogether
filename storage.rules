@@ -1,0 +1,17 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // 请求者必须是该家庭的成员（跨服务读取 Firestore 的 members 子集合）。
+    function isMember(householdId) {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/households/$(householdId)/members/$(request.auth.uid));
+    }
+
+    // 宠物照片路径：households/{家庭ID}/pets/{宠物ID}.jpg
+    match /households/{householdId}/pets/{fileName} {
+      allow read, write: if isMember(householdId);
+    }
+  }
+}
