@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/care_catalog.dart';
 import '../models/models.dart';
 import '../services/care_service.dart';
+import '../services/firebase_care_service.dart';
+import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import '../utils/care_calendar.dart';
 import '../utils/extensions.dart';
@@ -14,17 +17,33 @@ import '../utils/id.dart';
 /// Shared application state and actions, ported from `CareStore.swift`.
 /// Exposes a [ChangeNotifier] that Flutter widgets rebuild from.
 class CareStore extends ChangeNotifier {
-  CareStore(this._service) {
+  CareStore(
+    this._service, {
+    NotificationService? notificationService,
+  }) : _notificationService = notificationService {
     loadCustomCategories();
   }
 
   final CareService _service;
+  final NotificationService? _notificationService;
 
   Household? _household;
   Caregiver? _currentCaregiver;
   List<CareTask> _tasks = [];
   List<Caregiver> _caregivers = [];
   List<CareRoutine> _routines = [];
+
+  HouseholdInvitation? _invitationPreview;
+  HouseholdInvitation? _activeInvitation;
+  HouseholdJoinRequest? _pendingJoinRequest;
+  List<HouseholdJoinRequest> _joinRequests = [];
+  StreamSubscription<HouseholdJoinRequest?>? _pendingJoinSubscription;
+  StreamSubscription<List<HouseholdJoinRequest>>? _joinRequestsSubscription;
+
+  bool _notificationsEnabled = false;
+  bool _completingApprovedJoin = false;
+  NotificationPermissionState _notificationPermission =
+      NotificationPermissionState.unavailable;
 
   String? _errorMessage;
   bool _isLoading = false;
@@ -53,6 +72,31 @@ class CareStore extends ChangeNotifier {
   bool get isSavingTask => _isSavingTask;
   bool get isSavingProfile => _isSavingProfile;
   Set<String> get mutatingTaskIDs => _mutatingTaskIDs;
+
+  HouseholdInvitation? get invitationPreview => _invitationPreview;
+  HouseholdInvitation? get activeInvitation => _activeInvitation;
+  HouseholdJoinRequest? get pendingJoinRequest => _pendingJoinRequest;
+  List<HouseholdJoinRequest> get joinRequests => _joinRequests;
+  bool get notificationsEnabled => _notificationsEnabled;
+  NotificationPermissionState get notificationPermission =>
+      _notificationPermission;
+
+  /// True when the store runs against a real Firebase service rather than the
+  /// offline mock (QR scanning etc. is gated on this).
+  bool get isCloudBacked => _service is FirebaseCareService;
+
+  /// Whether the current caregiver is the household owner. Legacy documents
+  /// without an [Household.ownerID] fall back to the sole-member case.
+  bool get isOwner {
+    final household = _household;
+    final caregiver = _currentCaregiver;
+    if (household == null || caregiver == null) return false;
+    final ownerID = household.ownerID;
+    if (ownerID != null) return ownerID == caregiver.id;
+    return _caregivers.length == 1 && _caregivers.first.id == caregiver.id;
+  }
+
+  bool get hasHousehold => _household != null;
 
   Caregiver? get partnerCaregiver {
     final current = _currentCaregiver;
@@ -152,12 +196,21 @@ class CareStore extends ChangeNotifier {
     if (_didAttemptSessionRestore) return;
     _didAttemptSessionRestore = true;
     await _restoreSessionIfAvailable();
+    // No household (yet): the user may have a pending join request waiting
+    // for owner approval.
+    if (_household == null && _pendingJoinRequest == null) {
+      try {
+        final request = await _service.restorePendingJoinRequest();
+        if (request != null) _watchPendingRequest(request);
+      } catch (error) {
+        _setError(error);
+      }
+    }
   }
 
   Future<void> createHousehold({
     required String name,
-    required String petName,
-    required PetType petType,
+    required List<Pet> pets,
     required String caregiverName,
   }) async {
     if (_isLoading) return;
@@ -168,25 +221,193 @@ class CareStore extends ChangeNotifier {
 
     await _performSessionRequest(generation, () => _service.createHousehold(
           name: name,
-          petName: petName,
-          petType: petType,
+          pets: pets,
           caregiverName: caregiverName,
         ));
   }
 
-  Future<void> joinHousehold({
-    required String inviteCode,
-    required String caregiverName,
-  }) async {
-    if (_isLoading) return;
-    _sessionRequestGeneration++;
-    final generation = _sessionRequestGeneration;
-    _isLoading = true;
-    notifyListeners();
+  // -------------------------------------------------------------------------
+  // Invitations (one-time 24h link/QR + owner approval)
+  // -------------------------------------------------------------------------
 
-    await _performSessionRequest(generation, () => _service.joinHousehold(
-          inviteCode: inviteCode,
-          caregiverName: caregiverName,
+  /// Parses an invitation value (a deep link or a bare invitation id) and
+  /// shows a preview of the destination household.
+  Future<void> previewInvitation(String value) async {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return;
+    await _runLoading(() async {
+      _invitationPreview = await _service.loadInvitation(_invitationID(trimmed));
+    });
+  }
+
+  static String _invitationID(String value) {
+    final uri = Uri.tryParse(value);
+    if (uri != null &&
+        uri.scheme == 'copaw' &&
+        uri.host == 'invite' &&
+        uri.pathSegments.isNotEmpty) {
+      return uri.pathSegments.last;
+    }
+    return value;
+  }
+
+  Future<void> handleInvitationLink(Uri uri) async {
+    if (uri.scheme != 'copaw' || uri.host != 'invite') return;
+    if (hasHousehold) {
+      _setError(const CareServiceError(CareServiceErrorType.alreadyMember));
+      return;
+    }
+    await previewInvitation(uri.toString());
+  }
+
+  void clearInvitationPreview() {
+    _invitationPreview = null;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  Future<void> requestToJoin({required String caregiverName}) async {
+    final invitation = _invitationPreview;
+    if (invitation == null) return;
+    await _runLoading(() async {
+      final request = await _service.requestToJoin(
+        invitation: invitation,
+        name: caregiverName,
+      );
+      _invitationPreview = null;
+      _watchPendingRequest(request);
+    });
+  }
+
+  Future<void> createInvitation() async {
+    final household = _household;
+    final caregiver = _currentCaregiver;
+    if (household == null || caregiver == null) return;
+    await _runLoading(() async {
+      final previous = _activeInvitation;
+      if (previous != null && previous.isActive) {
+        await _service.revokeInvitation(previous.id);
+        _activeInvitation = null;
+      }
+      _activeInvitation = await _service.createInvitation(
+        householdID: household.id,
+        inviterName: caregiver.displayName,
+      );
+    });
+  }
+
+  Future<void> revokeInvitation() async {
+    final invitation = _activeInvitation;
+    if (invitation == null) return;
+    final succeeded = await _runLoading<bool>(() async {
+      await _service.revokeInvitation(invitation.id);
+      return true;
+    });
+    if (succeeded ?? false) {
+      _activeInvitation = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> reviewJoinRequest(
+    HouseholdJoinRequest request, {
+    required bool approve,
+  }) async {
+    final household = _household;
+    if (household == null) return;
+    final succeeded = await _runLoading<bool>(() async {
+      await _service.reviewJoinRequest(
+        householdID: household.id,
+        request: request,
+        approve: approve,
+      );
+      return true;
+    });
+    if (succeeded ?? false) {
+      _joinRequests =
+          _joinRequests.where((item) => item.userId != request.userId).toList();
+      notifyListeners();
+    }
+  }
+
+  Future<void> removeMember(Caregiver caregiver) async {
+    final household = _household;
+    if (household == null || !isOwner) return;
+    await _runLoading<bool>(() async {
+      await _service.removeMember(household.id, caregiver.id);
+      return true;
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Notifications
+  // -------------------------------------------------------------------------
+
+  Future<bool> enableNotifications() async {
+    final household = _household;
+    final caregiver = _currentCaregiver;
+    final notifications = _notificationService;
+    if (household == null || caregiver == null || notifications == null) {
+      return false;
+    }
+    final permission = await _runLoading(
+      () => notifications.requestAndSync(
+        householdId: household.id,
+        caregiverId: caregiver.id,
+      ),
+    );
+    if (permission == null) return false;
+    _notificationPermission = permission;
+    _notificationsEnabled = permission.isGranted;
+    notifyListeners();
+    return _notificationsEnabled;
+  }
+
+  Future<void> disableNotifications() async {
+    final household = _household;
+    final caregiver = _currentCaregiver;
+    final notifications = _notificationService;
+    if (household == null || caregiver == null || notifications == null) {
+      return;
+    }
+    await _runLoading(
+      () => notifications.disableForMember(
+        householdId: household.id,
+        caregiverId: caregiver.id,
+      ),
+    );
+    _notificationsEnabled = false;
+    _notificationPermission = NotificationPermissionState.unavailable;
+    notifyListeners();
+  }
+
+  // -------------------------------------------------------------------------
+  // Skip / restore a single routine occurrence
+  // -------------------------------------------------------------------------
+
+  Future<bool> skipTaskOccurrence(CareTask task) {
+    final household = _household;
+    final caregiver = _currentCaregiver;
+    if (household == null || caregiver == null) {
+      return Future.value(false);
+    }
+    return _performTaskMutation(task.id, () => _service.skipTaskOccurrence(
+          task,
+          household.id,
+          caregiver,
+        ));
+  }
+
+  Future<bool> restoreTaskOccurrence(CareTask task) {
+    final household = _household;
+    final caregiver = _currentCaregiver;
+    if (household == null || caregiver == null) {
+      return Future.value(false);
+    }
+    return _performTaskMutation(task.id, () => _service.restoreTaskOccurrence(
+          task,
+          household.id,
+          caregiver,
         ));
   }
 
@@ -580,6 +801,7 @@ class CareStore extends ChangeNotifier {
 
   void leaveHousehold() {
     _sessionRequestGeneration++;
+    _cancelSubscriptions();
     _service.leaveHousehold();
     _household = null;
     _currentCaregiver = null;
@@ -587,6 +809,10 @@ class CareStore extends ChangeNotifier {
     _caregivers = [];
     _routines = [];
     _mutatingTaskIDs = {};
+    _invitationPreview = null;
+    _activeInvitation = null;
+    _pendingJoinRequest = null;
+    _joinRequests = [];
     _isLoading = false;
     _isSavingTask = false;
     _isSavingProfile = false;
@@ -597,6 +823,29 @@ class CareStore extends ChangeNotifier {
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
+
+  /// Runs [operation] under the shared loading flag, returning the operation's
+  /// result (or null on error / when a newer session request superseded it).
+  Future<T?> _runLoading<T>(Future<T> Function() operation) async {
+    if (_isLoading) return null;
+    final generation = _sessionRequestGeneration;
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final result = await operation();
+      return generation == _sessionRequestGeneration ? result : null;
+    } catch (error) {
+      if (generation != _sessionRequestGeneration) return null;
+      _setError(error);
+      return null;
+    } finally {
+      if (generation == _sessionRequestGeneration) {
+        _isLoading = false;
+      }
+      notifyListeners();
+    }
+  }
 
   Future<bool> _performTaskMutation(
     String taskID,
@@ -700,6 +949,98 @@ class CareStore extends ChangeNotifier {
       },
       onError: (error) => _setError(error),
     );
+
+    _joinRequestsSubscription?.cancel();
+    _joinRequestsSubscription = _service
+        .joinRequestsStream(session.household.id)
+        .listen((next) {
+          _joinRequests = next;
+          final invitation = _activeInvitation;
+          if (invitation != null &&
+              next.any((request) => request.invitationId == invitation.id)) {
+            _activeInvitation = null;
+          }
+          notifyListeners();
+        }, onError: (error) => _setError(error));
+
+    unawaited(_loadActiveInvitation(session.household.id));
+    unawaited(_syncNotificationsForSession());
+  }
+
+  Future<void> _loadActiveInvitation(String householdID) async {
+    try {
+      final invitation = await _service.getActiveInvitation(householdID);
+      if (_household?.id != householdID) return;
+      _activeInvitation = invitation;
+      notifyListeners();
+    } catch (error) {
+      _setError(error);
+    }
+  }
+
+  void _watchPendingRequest(HouseholdJoinRequest request) {
+    _pendingJoinSubscription?.cancel();
+    _pendingJoinRequest = request;
+    _invitationPreview = null;
+    _pendingJoinSubscription = _service.joinRequestStream(request).listen((
+      next,
+    ) {
+      _pendingJoinRequest = next;
+      notifyListeners();
+      if (next?.status == JoinRequestStatus.approved) {
+        unawaited(_completeApprovedJoin());
+      }
+    }, onError: (error) => _setError(error));
+    notifyListeners();
+  }
+
+  Future<void> _completeApprovedJoin() async {
+    if (_completingApprovedJoin) return;
+    _completingApprovedJoin = true;
+    try {
+      final session = await _service.restoreSession();
+      if (session != null && _household == null) {
+        _household = session.household;
+        _currentCaregiver = session.caregiver;
+        _observeDomain(session);
+      }
+    } catch (error) {
+      _setError(error);
+    } finally {
+      _completingApprovedJoin = false;
+    }
+  }
+
+  Future<void> _syncNotificationsForSession() async {
+    final notifications = _notificationService;
+    final household = _household;
+    final caregiver = _currentCaregiver;
+    if (notifications == null || household == null || caregiver == null) {
+      _notificationPermission = NotificationPermissionState.unavailable;
+      _notificationsEnabled = false;
+      notifyListeners();
+      return;
+    }
+    try {
+      _notificationPermission = await notifications.currentPermission();
+      _notificationsEnabled =
+          _notificationPermission.isGranted &&
+          await notifications.prepareMember(
+            householdId: household.id,
+            caregiverId: caregiver.id,
+          );
+      notifyListeners();
+    } catch (error) {
+      _setError(error);
+    }
+  }
+
+  void _cancelSubscriptions() {
+    _pendingJoinSubscription?.cancel();
+    _pendingJoinSubscription = null;
+    _joinRequestsSubscription?.cancel();
+    _joinRequestsSubscription = null;
+    _service.stopObserving();
   }
 
   void _setError(Object error) {
@@ -712,4 +1053,9 @@ class CareStore extends ChangeNotifier {
     return error.toString();
   }
 
+  @override
+  void dispose() {
+    _cancelSubscriptions();
+    super.dispose();
+  }
 }
