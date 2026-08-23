@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
@@ -20,7 +19,6 @@ class _ProfileEditViewState extends State<ProfileEditView> {
   late final TextEditingController _caregiverName;
   late final TextEditingController _householdName;
   late final TextEditingController _petName;
-  bool _copied = false;
   bool _didLoad = false;
   PetType _petType = PetType.cat;
 
@@ -200,9 +198,6 @@ class _ProfileEditViewState extends State<ProfileEditView> {
 
   Widget _profileCard(BuildContext context) {
     final language = context.watch<AppLanguageStore>().language;
-    final store = context.watch<CareStore>();
-    final inviteCode = store.household?.inviteCode ?? '';
-
     return PetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -265,68 +260,6 @@ class _ProfileEditViewState extends State<ProfileEditView> {
               Icons.category),
           const SizedBox(height: 8),
           _petTypeSelector(language),
-          if (inviteCode.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            PetSectionTitle(
-              title: L10n.text(
-                  language, 'Invite a caregiver', '家族を招待', '邀请家人', '가족 초대'),
-              detail: 'SHARE ACCESS',
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                const CareIcon(icon: Icons.group, color: PawColors.blue, size: 50),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        L10n.text(
-                            language, 'Invite code', '招待コード', '邀请码', '초대 코드'),
-                        style: const TextStyle(
-                            fontSize: 12, color: PawColors.muted),
-                      ),
-                      Text(
-                        inviteCode,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: PawColors.ink,
-                          letterSpacing: 1.2,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () => _copy(inviteCode),
-                  icon: Icon(_copied ? Icons.check : Icons.content_copy,
-                      size: 16),
-                  label: Text(_copied
-                      ? L10n.text(language, 'Copied', 'コピー済み', '已复制', '복사됨')
-                      : L10n.text(language, 'Copy', 'コピー', '复制', '복사')),
-                  style: TextButton.styleFrom(
-                    foregroundColor: PawColors.purple,
-                    backgroundColor: PawColors.lavender,
-                    shape: const StadiumBorder(),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              L10n.text(
-                language,
-                'Share this code with someone you trust so they can join this household.',
-                '信頼できる人にこのコードを共有して、家族に招待しましょう。',
-                '把这个代码分享给你信任的人，让他们加入这个家庭。',
-                '신뢰하는 사람에게 이 코드를 공유해 가족에 초대하세요.',
-              ),
-              style: const TextStyle(fontSize: 12, color: PawColors.muted),
-            ),
-          ],
         ],
       ),
     );
@@ -417,13 +350,6 @@ class _ProfileEditViewState extends State<ProfileEditView> {
       store.leaveHousehold();
       Navigator.of(context).pop();
     }
-  }
-
-  Future<void> _copy(String code) async {
-    await Clipboard.setData(ClipboardData(text: code));
-    setState(() => _copied = true);
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) setState(() => _copied = false);
   }
 
   Future<void> _save(CareStore store) async {
