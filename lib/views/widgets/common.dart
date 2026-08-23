@@ -177,17 +177,20 @@ class PetTag extends StatelessWidget {
 
 /// White rounded card with a soft shadow, matching `petCard`.
 class PetCard extends StatelessWidget {
-  const PetCard({super.key, required this.child, this.padding = 18});
+  const PetCard({super.key, required this.child, this.padding = 18, this.color});
 
   final Widget child;
   final double padding;
+
+  /// Optional background tint (defaults to translucent white).
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.all(padding),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.96),
+        color: color ?? Colors.white.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
         boxShadow: [

@@ -311,7 +311,15 @@ class _ActionButtons extends StatelessWidget {
       case CareTaskStatus.completed:
         return const SizedBox.shrink();
       case CareTaskStatus.skipped:
-        return const SizedBox.shrink();
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            style: pawCompactButtonStyle(PawColors.muted),
+            onPressed: () => store.restoreTaskOccurrence(task),
+            child: Text(L10n.text(language, 'Restore task', 'タスクを戻す',
+                '恢复任务', '작업 복원')),
+          ),
+        );
     }
   }
 }
@@ -402,6 +410,15 @@ class _UnclaimedActions extends StatelessWidget {
           child: Text(L10n.text(
               language, 'Choose a person', '担当者を指定', '指定负责人', '담당자 지정')),
         ),
+        if (task.kind == CareTaskKind.routine) ...[
+          const SizedBox(height: 10),
+          ElevatedButton(
+            style: pawCompactButtonStyle(PawColors.muted),
+            onPressed: () => store.skipTaskOccurrence(task),
+            child: Text(L10n.text(
+                language, 'Skip today', '今日はスキップ', '今天跳过', '오늘 건너뛰기')),
+          ),
+        ],
       ],
     );
   }

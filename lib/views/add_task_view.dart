@@ -26,7 +26,7 @@ class _AddTaskViewState extends State<AddTaskView> {
   CarePriority _priority = CarePriority.normal;
   CareRoutineFrequency _frequency = CareRoutineFrequency.daily;
   int _interval = 1;
-  String? _petID;
+  final Set<String> _petIds = {};
   final List<int> _weekdays = [1, 2, 3, 4, 5, 6, 7];
 
   @override
@@ -476,7 +476,7 @@ class _AddTaskViewState extends State<AddTaskView> {
           : CareRoutineFrequency.daily,
       weekdays: _weekdays,
       interval: _interval,
-      petID: _petID,
+      petIds: _petIds.toList(),
     );
     if (saved && mounted) Navigator.of(context).pop();
   }
@@ -521,15 +521,21 @@ class _AddTaskViewState extends State<AddTaskView> {
         ChoiceChip(
           label: Text(L10n.text(language, 'All pets', 'すべてのペット', '所有宠物',
               '모든 반려동물')),
-          selected: _petID == null,
-          onSelected: (_) => setState(() => _petID = null),
+          selected: _petIds.isEmpty,
+          onSelected: (_) => setState(() => _petIds.clear()),
         ),
         for (final pet in pets)
           ChoiceChip(
             avatar: Text(petTypeEmoji(pet.type)),
             label: Text(pet.name),
-            selected: _petID == pet.id,
-            onSelected: (_) => setState(() => _petID = pet.id),
+            selected: _petIds.contains(pet.id),
+            onSelected: (selected) => setState(() {
+              if (selected) {
+                _petIds.add(pet.id);
+              } else {
+                _petIds.remove(pet.id);
+              }
+            }),
           ),
       ],
     );

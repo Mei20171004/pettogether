@@ -262,10 +262,11 @@ class _ScheduleViewState extends State<ScheduleView> {
   Widget _agenda(
       BuildContext context, CareStore store, AppLanguage language) {
     final locale = language.rawValue;
-    final allTasks = store
-        .tasksOn(_selectedDate)
-        .where((t) => _petID == null || t.petID == _petID)
-        .toList();
+    final allTasks = store.tasksOn(_selectedDate).where((t) {
+      if (_petID == null) return true;
+      final petIds = t.effectivePetIds;
+      return petIds.isEmpty || petIds.contains(_petID);
+    }).toList();
     final routineTasks =
         allTasks.where((t) => t.kind == CareTaskKind.routine).toList();
     final oneOffTasks =
@@ -442,6 +443,8 @@ class _DayCell extends StatelessWidget {
     final hasRoutine = tasks.any((t) => t.kind == CareTaskKind.routine);
     final hasOneOff = tasks.any((t) => t.kind == CareTaskKind.oneOff);
     final hasUrgent = tasks.any((t) => t.priority == CarePriority.urgent);
+    final hasSkipped =
+        tasks.any((t) => t.status == CareTaskStatus.skipped);
     final indicatorColor = hasUrgent ? PawColors.rose : PawColors.purple;
 
     return InkWell(
@@ -490,6 +493,14 @@ class _DayCell extends StatelessWidget {
                     Icon(Icons.error,
                         size: 8,
                         color: isSelected ? Colors.white : indicatorColor),
+                  ],
+                  if (hasSkipped) ...[
+                    const SizedBox(width: 2),
+                    Icon(Icons.skip_next,
+                        size: 8,
+                        color: isSelected
+                            ? Colors.white
+                            : PawColors.muted),
                   ],
                 ],
               ),

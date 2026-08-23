@@ -20,6 +20,7 @@ class CareStore extends ChangeNotifier {
   CareStore(
     this._service, {
     NotificationService? notificationService,
+    // ignore: prefer_initializing_formals
   }) : _notificationService = notificationService {
     loadCustomCategories();
   }
@@ -108,6 +109,9 @@ class CareStore extends ChangeNotifier {
   List<CareTask> get unclaimedTasks => unclaimedTasksOn(DateTime.now());
   List<CareTask> get claimedTasks => claimedTasksOn(DateTime.now());
   List<CareTask> get completedTasks => completedTasksOn(DateTime.now());
+  List<CareTask> get skippedTasks => tasksOn(DateTime.now())
+      .where((t) => t.status == CareTaskStatus.skipped)
+      .toList();
 
   set errorMessage(String? value) {
     _errorMessage = value;
@@ -467,12 +471,22 @@ class CareStore extends ChangeNotifier {
     List<int> weekdays = const [1, 2, 3, 4, 5, 6, 7],
     int interval = 1,
     String? petID,
+    List<String> petIds = const [],
   }) async {
     final household = _household;
     final currentCaregiver = _currentCaregiver;
     if (household == null || currentCaregiver == null || _isSavingTask) {
       return false;
     }
+
+    // Multi-pet selection is stored in `petIds`; the legacy single `petID`
+    // field is kept in sync for backward compatibility.
+    final List<String> effectivePetIds = petIds.isNotEmpty
+        ? petIds
+        : (petID == null ? const <String>[] : [petID]);
+    final effectivePetID = effectivePetIds.length == 1
+        ? effectivePetIds.first
+        : (petID != null && petIds.isEmpty ? petID : null);
 
     final generation = _sessionRequestGeneration;
     _isSavingTask = true;
@@ -489,7 +503,8 @@ class CareStore extends ChangeNotifier {
             dueTime: date,
             kind: CareTaskKind.oneOff,
             priority: priority,
-            petID: petID,
+            petID: effectivePetID,
+            petIds: effectivePetIds,
             status: CareTaskStatus.unclaimed,
             createdByID: currentCaregiver.id,
             createdBy: currentCaregiver.displayName,
@@ -505,7 +520,8 @@ class CareStore extends ChangeNotifier {
             frequency: frequency,
             weekdays: weekdays,
             interval: interval,
-            petID: petID,
+            petID: effectivePetID,
+            petIds: effectivePetIds,
             hour: date.hour,
             minute: date.minute,
             startDate: startOfDay(date),

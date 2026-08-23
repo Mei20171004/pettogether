@@ -133,6 +133,24 @@ class TodayView extends StatelessWidget {
                         ),
                       ),
                     ],
+                    if (store.skippedTasks.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      _section(
+                        title: L10n.text(language, 'Skipped today',
+                            '今日スキップ', '今日已跳过', '오늘 건너뜀'),
+                        detail:
+                            '${store.skippedTasks.length} ${L10n.text(language, 'SKIPPED', 'スキップ', '已跳过', '건너뜀')}',
+                        child: Column(
+                          children: [
+                            for (final task in store.skippedTasks)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: TaskCard(task: task),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
