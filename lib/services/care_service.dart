@@ -25,6 +25,14 @@ enum CareServiceErrorType {
   notRequestRecipient,
   notRequestOwner,
   invalidTransition,
+  invitationNotFound,
+  invitationExpired,
+  invitationAlreadyClaimed,
+  invitationRevoked,
+  invitationUnavailable,
+  alreadyMember,
+  notOwner,
+  joinRequestPending,
 }
 
 /// Thrown by every [CareService] implementation. Carries a typed [type] and,
@@ -87,6 +95,22 @@ class CareServiceError implements Exception {
         return 'Only the caregiver who sent this request can cancel it.';
       case CareServiceErrorType.invalidTransition:
         return 'This task changed before your action finished. Refresh and try again.';
+      case CareServiceErrorType.invitationNotFound:
+        return "We couldn't find that invitation. It may have expired or been revoked.";
+      case CareServiceErrorType.invitationExpired:
+        return 'This invitation expired. Ask the owner for a new one.';
+      case CareServiceErrorType.invitationAlreadyClaimed:
+        return 'This invitation has already been used by someone else.';
+      case CareServiceErrorType.invitationRevoked:
+        return 'This invitation was revoked by the household owner.';
+      case CareServiceErrorType.invitationUnavailable:
+        return 'That invitation is unavailable in local demo mode. Try PAW123.';
+      case CareServiceErrorType.alreadyMember:
+        return 'You are already a member of a household. Leave it before joining another.';
+      case CareServiceErrorType.notOwner:
+        return 'Only the household owner can do this.';
+      case CareServiceErrorType.joinRequestPending:
+        return 'Your request is still waiting for the owner’s approval.';
     }
   }
 
@@ -102,13 +126,7 @@ abstract class CareService {
 
   Future<CareSession> createHousehold({
     required String name,
-    required String petName,
-    required PetType petType,
-    required String caregiverName,
-  });
-
-  Future<CareSession> joinHousehold({
-    required String inviteCode,
+    required List<Pet> pets,
     required String caregiverName,
   });
 
@@ -194,6 +212,93 @@ abstract class CareService {
     String householdID,
     Caregiver caregiver,
   );
+
+  /// Marks a single routine occurrence as skipped without touching the
+  /// routine itself. Persists an override task document at the occurrence id.
+  Future<void> skipTaskOccurrence(
+    CareTask task,
+    String householdID,
+    Caregiver caregiver,
+  );
+
+  /// Restores a previously skipped (or otherwise overridden) occurrence back
+  /// to its routine-derived state (unclaimed).
+  Future<void> restoreTaskOccurrence(
+    CareTask task,
+    String householdID,
+    Caregiver caregiver,
+  );
+
+  // -------------------------------------------------------------------------
+  // Invitations (one-time 24h link/QR + owner approval)
+  // -------------------------------------------------------------------------
+
+  /// Creates a fresh one-time invitation for the current user's household.
+  Future<HouseholdInvitation> createInvitation({
+    required String householdID,
+    required String inviterName,
+  });
+
+  /// Loads an invitation by id (from a deep link or QR code).
+  Future<HouseholdInvitation> loadInvitation(String invitationID);
+
+  Future<void> revokeInvitation(String invitationID);
+
+  /// Claims the invitation and files a pending join request for the current
+  /// user. The owner must approve before any household data is shared.
+  Future<HouseholdJoinRequest> requestToJoin({
+    required HouseholdInvitation invitation,
+    required String name,
+    String? email,
+  });
+
+  /// Restores a still-pending join request after an app restart.
+  Future<HouseholdJoinRequest?> restorePendingJoinRequest();
+
+  Stream<HouseholdJoinRequest?> joinRequestStream(HouseholdJoinRequest request);
+
+  Stream<List<HouseholdJoinRequest>> joinRequestsStream(String householdID);
+
+  /// The household's current active/claimed invitation, if any.
+  Future<HouseholdInvitation?> getActiveInvitation(String householdID);
+
+  /// Approves (creates a member doc) or rejects the join request.
+  Future<void> reviewJoinRequest({
+    required String householdID,
+    required HouseholdJoinRequest request,
+    required bool approve,
+  });
+
+  /// Owner-only: removes a caregiver from the household.
+  Future<void> removeMember(String householdID, String caregiverID);
+
+  // -------------------------------------------------------------------------
+  // Push notifications (FCM tokens live under member/devices)
+  // -------------------------------------------------------------------------
+
+  Future<void> savePushToken({
+    required String householdID,
+    required String caregiverID,
+    required String token,
+    required String platform,
+  });
+
+  Future<void> removePushToken({
+    required String householdID,
+    required String caregiverID,
+    required String token,
+  });
+
+  Future<bool> notificationsEnabled({
+    required String householdID,
+    required String caregiverID,
+  });
+
+  Future<void> setNotificationsEnabled({
+    required String householdID,
+    required String caregiverID,
+    required bool enabled,
+  });
 
   void stopObserving();
 }

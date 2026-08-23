@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -17,9 +16,6 @@ import 'care_service.dart';
 /// original app and its security rules.
 class FirebaseCareService implements CareService {
   static const _householdIDKey = 'copaw.activeHouseholdID';
-  static const _inviteCodeLength = 6;
-  static const _inviteCodeChars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  static const _inviteCodeAttempts = 5;
 
   StreamSubscription? _householdSub;
   StreamSubscription? _taskSub;
@@ -37,141 +33,86 @@ class FirebaseCareService implements CareService {
     _ensureConfigured();
     final user = await _ensureAuthenticated();
     final householdID = await _savedHouseholdID();
-    if (householdID == null) return null;
-
-    final householdDoc = await _householdRef(householdID).get();
-    final memberDoc = await _memberRef(householdID, user.uid).get();
-    if (!householdDoc.exists || !memberDoc.exists) {
+    if (householdID != null) {
+      final householdDoc = await _householdRef(householdID).get();
+      final memberDoc = await _memberRef(householdID, user.uid).get();
+      if (householdDoc.exists && memberDoc.exists) {
+        return CareSession(
+          household: _householdFrom(householdDoc),
+          caregiver: _caregiverFrom(memberDoc),
+        );
+      }
       await _clearSavedHouseholdID();
-      return null;
     }
 
-    return CareSession(
-      household: _householdFrom(householdDoc),
-      caregiver: _caregiverFrom(memberDoc),
-    );
+    // Fallback: the owner may have approved our join request while we were
+    // offline. Collection-group lookup by the member `id` field finds the
+    // household without knowing its id.
+    final membership = await _db
+        .collectionGroup('members')
+        .where('id', isEqualTo: user.uid)
+        .limit(1)
+        .get();
+    if (membership.docs.isNotEmpty) {
+      final memberDoc = membership.docs.first;
+      final resolvedHouseholdID = memberDoc.reference.parent.parent?.id;
+      if (resolvedHouseholdID != null) {
+        final householdDoc = await _householdRef(resolvedHouseholdID).get();
+        if (householdDoc.exists) {
+          await _saveHouseholdID(resolvedHouseholdID);
+          return CareSession(
+            household: _householdFrom(householdDoc),
+            caregiver: _caregiverFrom(memberDoc),
+          );
+        }
+      }
+    }
+    return null;
   }
 
   @override
   Future<CareSession> createHousehold({
     required String name,
-    required String petName,
-    required PetType petType,
+    required List<Pet> pets,
     required String caregiverName,
   }) async {
     _ensureConfigured();
     final user = await _ensureAuthenticated();
     final householdRef = _db.collection('households').doc();
     final timeZoneIdentifier = DateTime.now().timeZoneName;
-    final pet = Pet(id: uuid(), name: petName, type: petType);
+    final memberRef = householdRef.collection('members').doc(user.uid);
 
-    for (var attempt = 0; attempt < _inviteCodeAttempts; attempt++) {
-      final inviteCode = _makeInviteCode();
-      final inviteRef = _db.collection('inviteCodes').doc(inviteCode);
-      final memberRef = householdRef.collection('members').doc(user.uid);
-
-      try {
-        await _db.runTransaction((tx) async {
-          final existingInvite = await tx.get(inviteRef);
-          if (existingInvite.exists) throw _InviteCodeCollision();
-
-          tx.set(
-            householdRef,
-            _householdData(
-              id: householdRef.id,
-              name: name,
-              pets: [pet],
-              inviteCode: inviteCode,
-              timeZoneIdentifier: timeZoneIdentifier,
-              ownerID: user.uid,
-            ),
-          );
-          tx.set(
-            memberRef,
-            _caregiverData(
-              id: user.uid,
-              displayName: caregiverName,
-              inviteCode: inviteCode,
-            ),
-          );
-          tx.set(inviteRef, {
-            'householdID': householdRef.id,
-            'createdBy': user.uid,
-            'createdAt': FieldValue.serverTimestamp(),
-            'active': true,
-          });
-        });
-
-        await _saveHouseholdID(householdRef.id);
-        return CareSession(
-          household: Household(
-            id: householdRef.id,
-            name: name,
-            inviteCode: inviteCode,
-            pets: [pet],
-            timeZoneIdentifier: timeZoneIdentifier,
-          ),
-          caregiver: Caregiver(id: user.uid, displayName: caregiverName),
-        );
-      } on _InviteCodeCollision {
-        continue;
-      } catch (error) {
-        throw _map(error);
-      }
-    }
-
-    throw const CareServiceError(CareServiceErrorType.inviteCodeUnavailable);
-  }
-
-  @override
-  Future<CareSession> joinHousehold({
-    required String inviteCode,
-    required String caregiverName,
-  }) async {
-    _ensureConfigured();
-    final user = await _ensureAuthenticated();
-    final normalized = inviteCode.trim().toUpperCase();
-
-    final validCode = normalized.length == _inviteCodeLength &&
-        normalized.split('').every(_inviteCodeChars.contains);
-    if (!validCode) {
-      throw const CareServiceError(CareServiceErrorType.invalidInviteCode);
-    }
-
-    final inviteDoc = await _db.collection('inviteCodes').doc(normalized).get();
-    final inviteData = inviteDoc.data();
-    final householdID = inviteData?['householdID'] as String?;
-    if (!inviteDoc.exists ||
-        inviteData?['active'] == false ||
-        householdID == null) {
-      throw const CareServiceError(CareServiceErrorType.invalidInviteCode);
-    }
-
-    final memberRef = _memberRef(householdID, user.uid);
-    final memberDoc = await memberRef.get();
-    if (memberDoc.exists) {
-      await memberRef.update({
-        'displayName': caregiverName,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } else {
-      await memberRef.set(
+    await _db.runTransaction((tx) async {
+      tx.set(
+        householdRef,
+        _householdData(
+          id: householdRef.id,
+          name: name,
+          pets: pets,
+          timeZoneIdentifier: timeZoneIdentifier,
+          ownerID: user.uid,
+        ),
+      );
+      tx.set(
+        memberRef,
         _caregiverData(
           id: user.uid,
           displayName: caregiverName,
-          inviteCode: normalized,
+          role: 'owner',
         ),
       );
-    }
+    });
 
-    final householdDoc = await _householdRef(householdID).get();
-    if (!householdDoc.exists) {
-      throw const CareServiceError(CareServiceErrorType.invalidInviteCode);
-    }
-
-    await _saveHouseholdID(householdID);
+    await _saveHouseholdID(householdRef.id);
     return CareSession(
-      household: _householdFrom(householdDoc),
+      household: Household(
+        id: householdRef.id,
+        name: name,
+        inviteCode: '',
+        pets: pets,
+        timeZoneIdentifier: timeZoneIdentifier,
+        ownerID: user.uid,
+      ),
       caregiver: Caregiver(id: user.uid, displayName: caregiverName),
     );
   }
@@ -662,6 +603,402 @@ class FirebaseCareService implements CareService {
   }
 
   @override
+  Future<void> skipTaskOccurrence(
+    CareTask task,
+    String householdID,
+    Caregiver caregiver,
+  ) async {
+    _ensureConfigured();
+    final user = await _ensureAuthenticated();
+    _validate(caregiver, user.uid);
+    if (task.routineID == null) {
+      throw const CareServiceError(CareServiceErrorType.invalidTransition);
+    }
+    final ref = _taskRef(householdID, task.id);
+    await _db.runTransaction((tx) async {
+      final doc = await tx.get(ref);
+      if (doc.exists) {
+        final data = doc.data()!;
+        tx.update(ref, {
+          'status': CareTaskStatus.skipped.rawValue,
+          'skippedBy': caregiver.displayName,
+          'skippedAt': FieldValue.serverTimestamp(),
+          'revision': _revision(data) + 1,
+        });
+      } else {
+        if (task.createdByID == null) {
+          throw const CareServiceError(CareServiceErrorType.taskNotFound);
+        }
+        final materialized = task.copyWith(
+          status: CareTaskStatus.skipped,
+          clearAssignmentRequest: true,
+          revision: task.revision + 1,
+        );
+        final payload = _taskData(
+          materialized,
+          createdByID: task.createdByID!,
+          useServerCreatedAt: false,
+        );
+        payload['skippedBy'] = caregiver.displayName;
+        payload['skippedAt'] = FieldValue.serverTimestamp();
+        tx.set(ref, payload);
+      }
+    });
+  }
+
+  @override
+  Future<void> restoreTaskOccurrence(
+    CareTask task,
+    String householdID,
+    Caregiver caregiver,
+  ) async {
+    _ensureConfigured();
+    final user = await _ensureAuthenticated();
+    _validate(caregiver, user.uid);
+    if (task.routineID == null) {
+      throw const CareServiceError(CareServiceErrorType.invalidTransition);
+    }
+    final ref = _taskRef(householdID, task.id);
+    await _db.runTransaction((tx) async {
+      final doc = await tx.get(ref);
+      if (!doc.exists) {
+        throw const CareServiceError(CareServiceErrorType.taskNotFound);
+      }
+      if (_status(doc.data()!['status'] as String?) != CareTaskStatus.skipped) {
+        throw const CareServiceError(CareServiceErrorType.invalidTransition);
+      }
+      // Deleting the override lets the store regenerate the occurrence from
+      // its routine (unclaimed).
+      tx.delete(ref);
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Invitations (one-time 24h link/QR + owner approval)
+  // -------------------------------------------------------------------------
+
+  @override
+  Future<HouseholdInvitation> createInvitation({
+    required String householdID,
+    required String inviterName,
+  }) async {
+    _ensureConfigured();
+    final user = await _ensureAuthenticated();
+    final householdDoc = await _householdRef(householdID).get();
+    final data = householdDoc.data();
+    if (!householdDoc.exists || data == null) {
+      throw const CareServiceError(CareServiceErrorType.householdMismatch);
+    }
+    if (data['ownerID'] != user.uid) {
+      throw const CareServiceError(CareServiceErrorType.notOwner);
+    }
+    final ref = _db.collection('invitations').doc();
+    final now = DateTime.now();
+    final invitation = HouseholdInvitation(
+      id: ref.id,
+      householdId: householdID,
+      householdName: data['name'] as String? ?? '',
+      petNames: _petsFromData(data).map((p) => p.name).toList(),
+      inviterName: inviterName,
+      invitedBy: user.uid,
+      status: InvitationStatus.active,
+      createdAt: now,
+      expiresAt: now.add(const Duration(hours: 24)),
+    );
+    final payload = invitation.toJson();
+    payload['createdAt'] = Timestamp.fromDate(invitation.createdAt);
+    payload['expiresAt'] = Timestamp.fromDate(invitation.expiresAt);
+    await ref.set(payload);
+    return invitation;
+  }
+
+  @override
+  Future<HouseholdInvitation> loadInvitation(String invitationID) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    final doc = await _db.collection('invitations').doc(invitationID).get();
+    if (!doc.exists) {
+      throw const CareServiceError(CareServiceErrorType.invitationNotFound);
+    }
+    final invitation = _invitationFrom(doc);
+    if (invitation.status == InvitationStatus.revoked) {
+      throw const CareServiceError(CareServiceErrorType.invitationRevoked);
+    }
+    if (invitation.status != InvitationStatus.active) {
+      throw const CareServiceError(CareServiceErrorType.invitationAlreadyClaimed);
+    }
+    if (!invitation.expiresAt.isAfter(DateTime.now())) {
+      throw const CareServiceError(CareServiceErrorType.invitationExpired);
+    }
+    return invitation;
+  }
+
+  @override
+  Future<void> revokeInvitation(String invitationID) async {
+    _ensureConfigured();
+    final user = await _ensureAuthenticated();
+    final ref = _db.collection('invitations').doc(invitationID);
+    await _db.runTransaction((tx) async {
+      final doc = await tx.get(ref);
+      if (!doc.exists) {
+        throw const CareServiceError(CareServiceErrorType.invitationNotFound);
+      }
+      if (doc.data()!['invitedBy'] != user.uid) {
+        throw const CareServiceError(CareServiceErrorType.notOwner);
+      }
+      tx.update(ref, {
+        'status': InvitationStatus.revoked.rawValue,
+        'revokedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  @override
+  Future<HouseholdJoinRequest> requestToJoin({
+    required HouseholdInvitation invitation,
+    required String name,
+    String? email,
+  }) async {
+    _ensureConfigured();
+    final user = await _ensureAuthenticated();
+    final invitationRef = _db.collection('invitations').doc(invitation.id);
+    final requestRef = _householdRef(invitation.householdId)
+        .collection('joinRequests')
+        .doc(user.uid);
+    final memberRef = _memberRef(invitation.householdId, user.uid);
+    final now = DateTime.now();
+
+    await _db.runTransaction((tx) async {
+      final memberDoc = await tx.get(memberRef);
+      if (memberDoc.exists) {
+        throw const CareServiceError(CareServiceErrorType.alreadyMember);
+      }
+      final invitationDoc = await tx.get(invitationRef);
+      if (!invitationDoc.exists) {
+        throw const CareServiceError(CareServiceErrorType.invitationNotFound);
+      }
+      final data = invitationDoc.data()!;
+      if (data['status'] != InvitationStatus.active.rawValue) {
+        throw const CareServiceError(CareServiceErrorType.invitationAlreadyClaimed);
+      }
+      final expiresAt = _anyDate(data['expiresAt']);
+      if (expiresAt == null || !expiresAt.isAfter(now)) {
+        throw const CareServiceError(CareServiceErrorType.invitationExpired);
+      }
+      tx.update(invitationRef, {
+        'status': InvitationStatus.claimed.rawValue,
+        'claimedBy': user.uid,
+        'claimedName': name,
+        'claimedAt': FieldValue.serverTimestamp(),
+      });
+      tx.set(requestRef, {
+        'userId': user.uid,
+        'householdId': invitation.householdId,
+        'invitationId': invitation.id,
+        'name': name,
+        'email': email,
+        'status': JoinRequestStatus.pending.rawValue,
+        'createdAt': Timestamp.fromDate(now),
+      });
+    });
+
+    return HouseholdJoinRequest(
+      userId: user.uid,
+      householdId: invitation.householdId,
+      invitationId: invitation.id,
+      name: name,
+      email: email,
+      status: JoinRequestStatus.pending,
+      createdAt: now,
+    );
+  }
+
+  @override
+  Future<HouseholdJoinRequest?> restorePendingJoinRequest() async {
+    _ensureConfigured();
+    final user = await _ensureAuthenticated();
+    final results = await _db
+        .collectionGroup('joinRequests')
+        .where('userId', isEqualTo: user.uid)
+        .where('status', isEqualTo: JoinRequestStatus.pending.rawValue)
+        .limit(1)
+        .get();
+    if (results.docs.isEmpty) return null;
+    return _joinRequestFrom(results.docs.first);
+  }
+
+  @override
+  Stream<HouseholdJoinRequest?> joinRequestStream(
+    HouseholdJoinRequest request,
+  ) {
+    return _householdRef(request.householdId)
+        .collection('joinRequests')
+        .doc(request.userId)
+        .snapshots()
+        .map((snap) => snap.exists ? _joinRequestFrom(snap) : null);
+  }
+
+  @override
+  Stream<List<HouseholdJoinRequest>> joinRequestsStream(String householdID) {
+    return _householdRef(householdID)
+        .collection('joinRequests')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map(_joinRequestFrom).toList());
+  }
+
+  @override
+  Future<HouseholdInvitation?> getActiveInvitation(String householdID) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    final results = await _db
+        .collection('invitations')
+        .where('householdId', isEqualTo: householdID)
+        .where('status', whereIn: [
+          InvitationStatus.active.rawValue,
+          InvitationStatus.claimed.rawValue,
+        ])
+        .limit(1)
+        .get();
+    if (results.docs.isEmpty) return null;
+    return _invitationFrom(results.docs.first);
+  }
+
+  @override
+  Future<void> reviewJoinRequest({
+    required String householdID,
+    required HouseholdJoinRequest request,
+    required bool approve,
+  }) async {
+    _ensureConfigured();
+    final user = await _ensureAuthenticated();
+    final householdRef = _householdRef(householdID);
+    final requestRef = householdRef.collection('joinRequests').doc(request.userId);
+    final memberRef = _memberRef(householdID, request.userId);
+    final invitationRef = _db.collection('invitations').doc(request.invitationId);
+
+    await _db.runTransaction((tx) async {
+      final householdDoc = await tx.get(householdRef);
+      if (!householdDoc.exists ||
+          householdDoc.data()?['ownerID'] != user.uid) {
+        throw const CareServiceError(CareServiceErrorType.notOwner);
+      }
+      final requestDoc = await tx.get(requestRef);
+      if (!requestDoc.exists ||
+          requestDoc.data()?['status'] != JoinRequestStatus.pending.rawValue) {
+        throw const CareServiceError(CareServiceErrorType.invalidTransition);
+      }
+      final next =
+          approve ? JoinRequestStatus.approved : JoinRequestStatus.rejected;
+      final invitationNext = approve
+          ? InvitationStatus.approved
+          : InvitationStatus.rejected;
+      tx.update(requestRef, {
+        'status': next.rawValue,
+        'reviewedBy': user.uid,
+        'reviewedAt': FieldValue.serverTimestamp(),
+      });
+      tx.update(invitationRef, {
+        'status': invitationNext.rawValue,
+        'reviewedBy': user.uid,
+        'reviewedAt': FieldValue.serverTimestamp(),
+      });
+      if (approve) {
+        tx.set(
+          memberRef,
+          _caregiverData(
+            id: request.userId,
+            displayName: request.name,
+            role: 'caregiver',
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  Future<void> removeMember(String householdID, String caregiverID) async {
+    _ensureConfigured();
+    final user = await _ensureAuthenticated();
+    final householdRef = _householdRef(householdID);
+    final memberRef = _memberRef(householdID, caregiverID);
+    await _db.runTransaction((tx) async {
+      final householdDoc = await tx.get(householdRef);
+      if (!householdDoc.exists ||
+          householdDoc.data()?['ownerID'] != user.uid) {
+        throw const CareServiceError(CareServiceErrorType.notOwner);
+      }
+      if (caregiverID == user.uid) {
+        throw const CareServiceError(CareServiceErrorType.notOwner);
+      }
+      tx.delete(memberRef);
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Push notifications (FCM tokens live under member/devices)
+  // -------------------------------------------------------------------------
+
+  @override
+  Future<void> savePushToken({
+    required String householdID,
+    required String caregiverID,
+    required String token,
+    required String platform,
+  }) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    await _memberRef(householdID, caregiverID)
+        .collection('devices')
+        .doc(token)
+        .set({
+          'token': token,
+          'platform': platform,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+  }
+
+  @override
+  Future<void> removePushToken({
+    required String householdID,
+    required String caregiverID,
+    required String token,
+  }) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    final ref = _memberRef(householdID, caregiverID)
+        .collection('devices')
+        .doc(token);
+    final doc = await ref.get();
+    if (doc.exists) await ref.delete();
+  }
+
+  @override
+  Future<bool> notificationsEnabled({
+    required String householdID,
+    required String caregiverID,
+  }) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    final doc = await _memberRef(householdID, caregiverID).get();
+    return doc.data()?['notificationsEnabled'] as bool? ?? false;
+  }
+
+  @override
+  Future<void> setNotificationsEnabled({
+    required String householdID,
+    required String caregiverID,
+    required bool enabled,
+  }) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    await _memberRef(householdID, caregiverID).update({
+      'notificationsEnabled': enabled,
+      'notificationUpdatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  @override
   void stopObserving() {
     _householdSub?.cancel();
     _taskSub?.cancel();
@@ -779,6 +1116,7 @@ class FirebaseCareService implements CareService {
       inviteCode: inviteCode,
       pets: _petsFromData(data),
       timeZoneIdentifier: data?['timeZoneIdentifier'] as String? ?? '',
+      ownerID: data?['ownerID'] as String?,
     );
   }
 
@@ -851,6 +1189,8 @@ class FirebaseCareService implements CareService {
           const [1, 2, 3, 4, 5, 6, 7],
       interval: _int(data?['interval']) ?? 1,
       petID: data?['petID'] as String?,
+      petIds: (data?['petIds'] as List?)?.whereType<String>().toList() ??
+          const [],
       hour: hour,
       minute: minute,
       startDate: startDate,
@@ -912,6 +1252,8 @@ class FirebaseCareService implements CareService {
       priority: CarePriority.fromRaw(data?['priority'] as String? ?? 'normal'),
       routineID: data?['routineID'] as String?,
       petID: data?['petID'] as String?,
+      petIds: (data?['petIds'] as List?)?.whereType<String>().toList() ??
+          const [],
       status: status,
       assignmentRequest: request,
       assigneeID: data?['assigneeID'] as String?,
@@ -931,7 +1273,6 @@ class FirebaseCareService implements CareService {
     required String id,
     required String name,
     required List<Pet> pets,
-    required String inviteCode,
     required String timeZoneIdentifier,
     required String ownerID,
   }) {
@@ -939,7 +1280,7 @@ class FirebaseCareService implements CareService {
       'id': id,
       'name': name,
       'pets': pets.map((e) => e.toJson()).toList(),
-      'inviteCode': inviteCode,
+      'inviteCode': '',
       'timeZoneIdentifier': timeZoneIdentifier,
       'ownerID': ownerID,
       'createdAt': FieldValue.serverTimestamp(),
@@ -949,12 +1290,12 @@ class FirebaseCareService implements CareService {
   Map<String, dynamic> _caregiverData({
     required String id,
     required String displayName,
-    required String inviteCode,
+    String role = 'caregiver',
   }) {
     return {
       'id': id,
       'displayName': displayName,
-      'inviteCode': inviteCode,
+      'role': role,
       'joinedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -970,6 +1311,7 @@ class FirebaseCareService implements CareService {
       'weekdays': routine.weekdays,
       'interval': routine.interval,
       'petID': routine.petID,
+      'petIds': routine.petIds,
       'hour': routine.hour,
       'minute': routine.minute,
       'startDate': Timestamp.fromDate(routine.startDate),
@@ -997,6 +1339,7 @@ class FirebaseCareService implements CareService {
       'priority': task.priority.rawValue,
       'routineID': task.routineID,
       'petID': task.petID,
+      'petIds': task.petIds,
       'status': task.status.rawValue,
       'assignmentRequestID': request?.id,
       'assignmentMode': request?.mode.rawValue,
@@ -1057,9 +1400,19 @@ class FirebaseCareService implements CareService {
         return CareTaskStatus.claimed;
       case 'completed':
         return CareTaskStatus.completed;
+      case 'skipped':
+        return CareTaskStatus.skipped;
       default:
         return null;
     }
+  }
+
+  /// Reads a date written as a Firestore [Timestamp] or an epoch-millis int.
+  DateTime? _anyDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 
   void _requireUnclaimed(Map<String, dynamic> data) {
@@ -1078,6 +1431,56 @@ class FirebaseCareService implements CareService {
       case null:
         throw const CareServiceError(CareServiceErrorType.invalidTransition);
     }
+  }
+
+  HouseholdInvitation _invitationFrom(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    if (data == null) {
+      throw const CareServiceError(CareServiceErrorType.malformedData);
+    }
+    String? str(dynamic value) => value as String?;
+    return HouseholdInvitation(
+      id: doc.id,
+      householdId: data['householdId'] as String,
+      householdName: data['householdName'] as String,
+      petNames: (data['petNames'] as List? ?? const [])
+          .whereType<String>()
+          .toList(),
+      inviterName: data['inviterName'] as String,
+      invitedBy: data['invitedBy'] as String,
+      status: InvitationStatus.fromRaw(data['status'] as String? ?? 'active'),
+      createdAt: _anyDate(data['createdAt']) ?? DateTime.now(),
+      expiresAt: _anyDate(data['expiresAt']) ??
+          DateTime.now().add(const Duration(hours: 24)),
+      claimedBy: str(data['claimedBy']),
+      claimedName: str(data['claimedName']),
+      claimedAt: _anyDate(data['claimedAt']),
+      reviewedBy: str(data['reviewedBy']),
+      reviewedAt: _anyDate(data['reviewedAt']),
+    );
+  }
+
+  HouseholdJoinRequest _joinRequestFrom(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    if (data == null) {
+      throw const CareServiceError(CareServiceErrorType.malformedData);
+    }
+    String? str(dynamic value) => value as String?;
+    return HouseholdJoinRequest(
+      userId: data['userId'] as String,
+      householdId: data['householdId'] as String,
+      invitationId: data['invitationId'] as String,
+      name: data['name'] as String,
+      email: str(data['email']),
+      status: JoinRequestStatus.fromRaw(data['status'] as String? ?? 'pending'),
+      createdAt: _anyDate(data['createdAt']) ?? DateTime.now(),
+      reviewedBy: str(data['reviewedBy']),
+      reviewedAt: _anyDate(data['reviewedAt']),
+    );
   }
 
   void _requireMatchingRequest(Map<String, dynamic> data, String requestID) {
@@ -1100,17 +1503,4 @@ class FirebaseCareService implements CareService {
     }
     return const CareServiceError(CareServiceErrorType.backendUnavailable);
   }
-
-  static String _makeInviteCode() {
-    final random = Random.secure();
-    return String.fromCharCodes(
-      List.generate(
-        _inviteCodeLength,
-        (_) => _inviteCodeChars
-            .codeUnitAt(random.nextInt(_inviteCodeChars.length)),
-      ),
-    );
-  }
 }
-
-class _InviteCodeCollision implements Exception {}

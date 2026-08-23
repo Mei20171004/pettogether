@@ -115,45 +115,20 @@ class MockCareService implements CareService {
   @override
   Future<CareSession> createHousehold({
     required String name,
-    required String petName,
-    required PetType petType,
+    required List<Pet> pets,
     required String caregiverName,
   }) async {
     await _loaded;
+    final caregiver = Caregiver(id: uuid(), displayName: caregiverName);
     _household = _household.copyWith(
       name: name,
-      pets: [Pet(id: uuid(), name: petName, type: petType)],
+      pets: pets,
+      ownerID: caregiver.id,
     );
-    final caregiver = Caregiver(id: uuid(), displayName: caregiverName);
     _caregiver = caregiver;
     _caregivers = [caregiver, demoPartner];
     _routines = _seedRoutines(caregiver);
     _tasks = _seedTaskOverrides(caregiver, demoPartner);
-    await _persist();
-    _notifyAll();
-    return CareSession(household: _household, caregiver: caregiver);
-  }
-
-  @override
-  Future<CareSession> joinHousehold({
-    required String inviteCode,
-    required String caregiverName,
-  }) async {
-    await _loaded;
-    final normalized = inviteCode.trim().toUpperCase();
-    if (normalized != _household.inviteCode) {
-      throw const CareServiceError(CareServiceErrorType.invalidInviteCode);
-    }
-
-    final caregiver = Caregiver(id: uuid(), displayName: caregiverName);
-    _caregiver = caregiver;
-    _ensureRoster(caregiver);
-    if (_routines.isEmpty) {
-      _routines = _seedRoutines(caregiver);
-    }
-    if (_tasks.isEmpty) {
-      _tasks = _seedTaskOverrides(caregiver, demoPartner);
-    }
     await _persist();
     _notifyAll();
     return CareSession(household: _household, caregiver: caregiver);
@@ -536,6 +511,243 @@ class MockCareService implements CareService {
       revision: task.revision + 1,
     );
     _replaceOrAppend(updated, index);
+  }
+
+  @override
+  Future<void> skipTaskOccurrence(
+    CareTask task,
+    String householdID,
+    Caregiver caregiver,
+  ) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    _validatedMember(caregiver);
+    if (task.routineID == null) {
+      throw const CareServiceError(CareServiceErrorType.invalidTransition);
+    }
+    final existing = _materialize(task);
+    final updated = existing.task.copyWith(
+      status: CareTaskStatus.skipped,
+      clearAssignmentRequest: true,
+      revision: existing.task.revision + 1,
+    );
+    _replaceOrAppend(updated, existing.index);
+  }
+
+  @override
+  Future<void> restoreTaskOccurrence(
+    CareTask task,
+    String householdID,
+    Caregiver caregiver,
+  ) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    _validatedMember(caregiver);
+    if (task.routineID == null) {
+      throw const CareServiceError(CareServiceErrorType.invalidTransition);
+    }
+    final index = _taskIndex(task.id);
+    if (_tasks[index].status != CareTaskStatus.skipped) {
+      throw const CareServiceError(CareServiceErrorType.invalidTransition);
+    }
+    // Deleting the override regenerates the occurrence from its routine
+    // (unclaimed).
+    _tasks = _tasks.where((t) => t.id != task.id).toList();
+    await _persist();
+    _notifyTasks();
+  }
+
+  // -------------------------------------------------------------------------
+  // Invitations (demo mode: PAW123 previews the seeded household; requests
+  // auto-approve so the demo stays usable)
+  // -------------------------------------------------------------------------
+
+  HouseholdInvitation? _activeInvitation;
+
+  @override
+  Future<HouseholdInvitation> createInvitation({
+    required String householdID,
+    required String inviterName,
+  }) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    final now = DateTime.now();
+    final invitation = HouseholdInvitation(
+      id: 'mock-invitation',
+      householdId: _household.id,
+      householdName: _household.name,
+      petNames: _household.pets.map((p) => p.name).toList(),
+      inviterName: inviterName,
+      invitedBy: _caregiver?.id ?? demoPartner.id,
+      status: InvitationStatus.active,
+      createdAt: now,
+      expiresAt: now.add(const Duration(hours: 24)),
+    );
+    _activeInvitation = invitation;
+    return invitation;
+  }
+
+  @override
+  Future<HouseholdInvitation> loadInvitation(String invitationID) async {
+    await _loaded;
+    final normalized = invitationID.trim().toUpperCase();
+    final active = _activeInvitation;
+    if (active != null && invitationID == active.id) {
+      return active;
+    }
+    if (normalized == 'PAW123' || normalized == 'DEMO') {
+      final now = DateTime.now();
+      return HouseholdInvitation(
+        id: 'mock-invitation',
+        householdId: _household.id,
+        householdName: _household.name,
+        petNames: _household.pets.map((p) => p.name).toList(),
+        inviterName: demoPartner.displayName,
+        invitedBy: demoPartner.id,
+        status: InvitationStatus.active,
+        createdAt: now,
+        expiresAt: now.add(const Duration(hours: 24)),
+      );
+    }
+    throw const CareServiceError(CareServiceErrorType.invitationNotFound);
+  }
+
+  @override
+  Future<void> revokeInvitation(String invitationID) async {
+    _activeInvitation = null;
+  }
+
+  @override
+  Future<HouseholdJoinRequest> requestToJoin({
+    required HouseholdInvitation invitation,
+    required String name,
+    String? email,
+  }) async {
+    await _loaded;
+    final caregiver = Caregiver(id: uuid(), displayName: name);
+    _caregiver = caregiver;
+    _ensureRoster(caregiver);
+    if (_routines.isEmpty) {
+      _routines = _seedRoutines(caregiver);
+    }
+    if (_tasks.isEmpty) {
+      _tasks = _seedTaskOverrides(caregiver, demoPartner);
+    }
+    await _persist();
+    _notifyAll();
+    // Demo mode approves instantly; the pending request is returned so the
+    // store can run the same "waiting → approved" transition as cloud mode.
+    return HouseholdJoinRequest(
+      userId: caregiver.id,
+      householdId: _household.id,
+      invitationId: invitation.id,
+      name: name,
+      email: email,
+      status: JoinRequestStatus.pending,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<HouseholdJoinRequest?> restorePendingJoinRequest() async => null;
+
+  @override
+  Stream<HouseholdJoinRequest?> joinRequestStream(
+    HouseholdJoinRequest request,
+  ) async* {
+    yield request;
+    yield HouseholdJoinRequest(
+      userId: request.userId,
+      householdId: request.householdId,
+      invitationId: request.invitationId,
+      name: request.name,
+      email: request.email,
+      status: JoinRequestStatus.approved,
+      createdAt: request.createdAt,
+      reviewedBy: demoPartner.id,
+      reviewedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Stream<List<HouseholdJoinRequest>> joinRequestsStream(
+    String householdID,
+  ) async* {
+    yield const [];
+  }
+
+  @override
+  Future<HouseholdInvitation?> getActiveInvitation(
+    String householdID,
+  ) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    return _activeInvitation;
+  }
+
+  @override
+  Future<void> reviewJoinRequest({
+    required String householdID,
+    required HouseholdJoinRequest request,
+    required bool approve,
+  }) async {
+    // Demo mode auto-approves; nothing to review.
+  }
+
+  @override
+  Future<void> removeMember(String householdID, String caregiverID) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    if (caregiverID == _caregiver?.id) {
+      throw const CareServiceError(CareServiceErrorType.notOwner);
+    }
+    _caregivers = _caregivers.where((c) => c.id != caregiverID).toList();
+    await _persist();
+    _notifyAll();
+  }
+
+  // -------------------------------------------------------------------------
+  // Push notifications (in-memory no-ops for demo mode)
+  // -------------------------------------------------------------------------
+
+  bool _notificationsEnabled = false;
+  final Set<String> _deviceTokens = {};
+
+  @override
+  Future<void> savePushToken({
+    required String householdID,
+    required String caregiverID,
+    required String token,
+    required String platform,
+  }) async {
+    _deviceTokens.add(token);
+  }
+
+  @override
+  Future<void> removePushToken({
+    required String householdID,
+    required String caregiverID,
+    required String token,
+  }) async {
+    _deviceTokens.remove(token);
+  }
+
+  @override
+  Future<bool> notificationsEnabled({
+    required String householdID,
+    required String caregiverID,
+  }) async {
+    await _loaded;
+    return _notificationsEnabled;
+  }
+
+  @override
+  Future<void> setNotificationsEnabled({
+    required String householdID,
+    required String caregiverID,
+    required bool enabled,
+  }) async {
+    _notificationsEnabled = enabled;
   }
 
   @override
