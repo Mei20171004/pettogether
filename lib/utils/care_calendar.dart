@@ -35,6 +35,11 @@ bool routineRunsOn(CareRoutine routine, DateTime day) {
   final start = startOfDay(routine.startDate);
   final interval = routine.interval < 1 ? 1 : routine.interval;
 
+  // A finite course ("seven days from Tuesday") stops on its last day. Both
+  // bounds are inclusive, the way a person counts days.
+  final end = routine.endDate;
+  if (end != null && dayStart.isAfter(startOfDay(end))) return false;
+
   switch (routine.frequency) {
     case CareRoutineFrequency.daily:
       return !dayStart.isBefore(start);

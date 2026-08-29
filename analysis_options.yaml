@@ -21,6 +21,9 @@ analyzer:
     # The Katecode/ folder is a separate reference project (care-paw) kept for
     # feature-porting reference; it is not part of this package.
     - Katecode/**
+    # Likewise "Mingze code/" (PetTogether-main): a separate reference project
+    # whose health/medication features are being ported into lib/.
+    - Mingze code/**
 
 linter:
   # The lint rules applied to this project can be customized in the

@@ -11,8 +11,8 @@ import 'store/care_store.dart';
 import 'theme/app_theme.dart';
 import 'views/auth_gate.dart';
 
-class CopawApp extends StatefulWidget {
-  const CopawApp({
+class PetTogetherApp extends StatefulWidget {
+  const PetTogetherApp({
     super.key,
     required this.language,
     required this.service,
@@ -24,10 +24,10 @@ class CopawApp extends StatefulWidget {
   final NotificationService? notifications;
 
   @override
-  State<CopawApp> createState() => _CopawAppState();
+  State<PetTogetherApp> createState() => _PetTogetherAppState();
 }
 
-class _CopawAppState extends State<CopawApp> {
+class _PetTogetherAppState extends State<PetTogetherApp> {
   late final CareStore _store;
   StreamSubscription<Uri>? _appLinkSubscription;
   String? _lastInvitationLink;
@@ -81,7 +81,7 @@ class _CopawAppState extends State<CopawApp> {
         ),
       ],
       child: MaterialApp(
-        title: 'copaw',
+        title: 'pettogether',
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(),
         home: const AuthGate(),

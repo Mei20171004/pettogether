@@ -23,8 +23,9 @@ class TaskCard extends StatelessWidget {
 
     final isMutating = store.mutatingTaskIDs.contains(task.id);
     final stateColor = _stateColor;
+    final petId = task.effectivePetIds.firstOrNull ?? task.petID;
     final pet =
-        store.household?.pets.where((p) => p.id == task.petID).firstOrNull;
+        store.household?.pets.where((p) => p.id == petId).firstOrNull;
 
     return Container(
       padding: const EdgeInsets.all(15),
@@ -77,6 +78,20 @@ class TaskCard extends StatelessWidget {
                               style: const TextStyle(
                                   fontSize: 12, color: PawColors.muted),
                             ),
+                            if (_doseLine(store) != null) ...[
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _doseLine(store)!,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: PawColors.ink,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 6),
@@ -253,6 +268,18 @@ class TaskCard extends StatelessWidget {
             '${task.assigneeNameSnapshot ?? 'A caregiver'} is on it',
         };
       case CareTaskStatus.completed:
+        // A completion the server has not confirmed is not evidence the dose
+        // happened. Believing a pet was already dosed is the one failure here
+        // that could leave it dosed twice, or not at all.
+        if (_isMedication(store) && !task.isServerConfirmed) {
+          return L10n.text(
+            language,
+            "Not confirmed yet — you're offline",
+            'オフラインのため未確認',
+            '离线中，尚未确认',
+            '오프라인 상태라 미확인',
+          );
+        }
         final name = task.completedBy ?? 'A caregiver';
         final at = task.completedAt;
         if (at != null) {
@@ -271,9 +298,27 @@ class TaskCard extends StatelessWidget {
           AppLanguage.english => 'Done by $name',
         };
       case CareTaskStatus.skipped:
-        return L10n.text(language, 'Skipped for today', '今日はスキップ済み',
-            '今天已跳过', '오늘은 건너뜀');
+        final reason = task.skipReason;
+        if (reason == null) {
+          return L10n.text(language, 'Skipped for today', '今日はスキップ済み',
+              '今天已跳过', '오늘은 건너뜀');
+        }
+        final label = L10n.skipReasonTitle(language, reason);
+        final note = task.skipNote;
+        return note == null || note.isEmpty ? label : '$label · $note';
     }
+  }
+
+  /// True when this task is a dose of a medication course.
+  bool _isMedication(CareStore store) => store.planForTask(task) != null;
+
+  /// "Half a tablet · after food", read off the routine behind the dose.
+  String? _doseLine(CareStore store) {
+    final routine = store.routineForTask(task);
+    final dose = routine?.doseText;
+    if (dose == null || dose.isEmpty) return null;
+    final how = routine?.doseInstructions;
+    return how == null || how.isEmpty ? dose : '$dose · $how';
   }
 
   String _timeText(AppLanguage language, DateTime date) {
@@ -297,14 +342,35 @@ class _ActionButtons extends StatelessWidget {
         return _UnclaimedActions(task: task);
       case CareTaskStatus.claimed:
         if (task.assigneeID == currentID) {
-          return SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: pawCompactButtonStyle(PawColors.green, filled: true),
-              onPressed: () => store.complete(task),
-              child: Text(L10n.text(
-                  language, 'Mark done', '完了にする', '标记完成', '완료로 표시')),
-            ),
+          // Recording a dose before its time is nearly always a mis-tap on the
+          // wrong row, so the button waits rather than erroring afterwards.
+          final tooEarly = store.planForTask(task) != null &&
+              task.dueTime.isAfter(DateTime.now());
+          final at = DateFormat.jm(language.rawValue).format(task.dueTime);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ElevatedButton(
+                style: pawCompactButtonStyle(PawColors.green, filled: true),
+                onPressed: tooEarly ? null : () => store.complete(task),
+                child: Text(L10n.text(
+                    language, 'Mark done', '完了にする', '标记完成', '완료로 표시')),
+              ),
+              if (tooEarly) ...[
+                const SizedBox(height: 6),
+                Text(
+                  L10n.text(
+                    language,
+                    'You can record it from $at',
+                    '$at から記録できます',
+                    '$at 起可记录',
+                    '$at 부터 기록할 수 있어요',
+                  ),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 12, color: PawColors.muted),
+                ),
+              ],
+            ],
           );
         }
         return const SizedBox.shrink();
@@ -414,12 +480,38 @@ class _UnclaimedActions extends StatelessWidget {
           const SizedBox(height: 10),
           ElevatedButton(
             style: pawCompactButtonStyle(PawColors.muted),
-            onPressed: () => store.skipTaskOccurrence(task),
+            onPressed: () => _skip(context, store),
             child: Text(L10n.text(
                 language, 'Skip today', '今日はスキップ', '今天跳过', '오늘 건너뛰기')),
           ),
         ],
       ],
+    );
+  }
+
+  /// Skipping a walk needs no explanation; skipping a dose does. For
+  /// medication the reason is asked for and stored, because "refused it twice,
+  /// vomited once" is something a vet can act on.
+  Future<void> _skip(BuildContext context, CareStore store) async {
+    if (store.planForTask(task) == null) {
+      await store.skipTaskOccurrence(task);
+      return;
+    }
+    final language = context.read<AppLanguageStore>().language;
+    final choice = await showModalBottomSheet<_SkipChoice>(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _SkipReasonSheet(language: language),
+    );
+    if (choice == null) return;
+    await store.skipTaskOccurrence(
+      task,
+      reason: choice.reason,
+      note: choice.note,
     );
   }
 
@@ -481,5 +573,130 @@ class _UnclaimedActions extends StatelessWidget {
     if (selected != null) {
       store.request(task, selected);
     }
+  }
+}
+
+class _SkipChoice {
+  const _SkipChoice(this.reason, this.note);
+  final MedicationSkipReason reason;
+  final String? note;
+}
+
+/// Asks why a dose was not given.
+class _SkipReasonSheet extends StatefulWidget {
+  const _SkipReasonSheet({required this.language});
+
+  final AppLanguage language;
+
+  @override
+  State<_SkipReasonSheet> createState() => _SkipReasonSheetState();
+}
+
+class _SkipReasonSheetState extends State<_SkipReasonSheet> {
+  MedicationSkipReason? _reason;
+  final _noteController = TextEditingController();
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final language = widget.language;
+    final needsNote = _reason?.requiresNote ?? false;
+    final canConfirm = _reason != null &&
+        (!needsNote || _noteController.text.trim().isNotEmpty);
+
+    return SafeArea(
+      child: Padding(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+              child: Text(
+                L10n.text(language, 'Why was it skipped?', 'スキップの理由は？',
+                    '为什么跳过？', '건너뛴 이유는?'),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: PawColors.ink,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                L10n.text(
+                  language,
+                  'The reason is kept with the dose, so a vet can see the pattern later.',
+                  '理由は記録に残り、後で獣医が経過を確認できます。',
+                  '原因会记录下来，之后兽医可以看到规律。',
+                  '이유가 기록에 남아 나중에 수의사가 확인할 수 있습니다.',
+                ),
+                style: const TextStyle(fontSize: 13, color: PawColors.muted),
+              ),
+            ),
+            for (final reason in MedicationSkipReason.values)
+              ListTile(
+                onTap: () => setState(() => _reason = reason),
+                leading: Icon(
+                  _reason == reason
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: _reason == reason ? PawColors.purple : PawColors.muted,
+                ),
+                title: Text(
+                  L10n.skipReasonTitle(language, reason),
+                  style: TextStyle(
+                    color: PawColors.ink,
+                    fontWeight: _reason == reason
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                  ),
+                ),
+              ),
+            if (needsNote)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+                child: TextField(
+                  controller: _noteController,
+                  maxLength: CareTask.maxSkipNoteLength,
+                  maxLines: 2,
+                  onChanged: (_) => setState(() {}),
+                  decoration: petFieldDecoration(
+                    hintText: L10n.text(language, 'What happened?',
+                        '何がありましたか？', '发生了什么？', '무슨 일이 있었나요?'),
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+              child: ElevatedButton(
+                style: pawPrimaryButtonStyle(),
+                onPressed: canConfirm
+                    ? () => Navigator.pop(
+                          context,
+                          _SkipChoice(
+                            _reason!,
+                            _noteController.text.trim().isEmpty
+                                ? null
+                                : _noteController.text.trim(),
+                          ),
+                        )
+                    : null,
+                child: Text(L10n.text(language, 'Record skip', 'スキップを記録',
+                    '记录跳过', '건너뜀 기록')),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

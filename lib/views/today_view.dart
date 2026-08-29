@@ -78,6 +78,7 @@ class TodayView extends StatelessWidget {
                     _greetingHeader(context, store, language),
                     const SizedBox(height: 20),
                     _petHeroCard(context, store, language),
+                    ..._healthDueBanner(context, store, language),
                     const SizedBox(height: 20),
                     _section(
                       title: L10n.text(
@@ -224,6 +225,78 @@ class TodayView extends StatelessWidget {
         MaterialPageRoute(builder: (_) => PetDetailView(pet: pet)),
       ),
     );
+  }
+
+  /// Vaccinations and dewormings coming due. Small and quiet until something
+  /// is actually close, then impossible to miss.
+  List<Widget> _healthDueBanner(
+      BuildContext context, CareStore store, AppLanguage language) {
+    final due = store.upcomingHealthDue();
+    if (due.isEmpty) return const [];
+    final soonest = due.first;
+    final pet = store.household?.pets
+        .where((p) => p.id == soonest.record.petId)
+        .firstOrNull;
+    if (pet == null) return const [];
+
+    final urgent = soonest.daysUntilDue <= 0;
+    final color = urgent ? PawColors.rose : PawColors.yellow;
+    final when = soonest.isOverdue
+        ? L10n.text(language, 'was due ${-soonest.daysUntilDue} days ago',
+            '${-soonest.daysUntilDue}日前が期限', '已过期 ${-soonest.daysUntilDue} 天',
+            '${-soonest.daysUntilDue}일 지남')
+        : soonest.isDueToday
+            ? L10n.text(language, 'is due today', '今日が期限', '今天到期', '오늘 마감')
+            : L10n.text(
+                language,
+                'is due in ${soonest.daysUntilDue} days',
+                'あと${soonest.daysUntilDue}日',
+                '还有 ${soonest.daysUntilDue} 天到期',
+                '${soonest.daysUntilDue}일 남음');
+
+    return [
+      const SizedBox(height: 20),
+      InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => PetDetailView(pet: pet)),
+        ),
+        child: PetCard(
+          padding: 14,
+          child: Row(
+            children: [
+              CareIcon(icon: Icons.vaccines, color: color, size: 40),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${pet.name} · ${soonest.record.title}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: PawColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      when,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: PawColors.muted),
+            ],
+          ),
+        ),
+      ),
+    ];
   }
 
   Widget _section({

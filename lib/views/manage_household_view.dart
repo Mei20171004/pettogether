@@ -740,8 +740,8 @@ class ManageHouseholdView extends StatelessWidget {
             color: PawColors.purple,
             size: 44),
         title: Text(
-          L10n.text(language, 'copaw Pro', 'copaw Pro', 'copaw Pro',
-              'copaw Pro'),
+          L10n.text(language, 'pettogether Pro', 'pettogether Pro', 'pettogether Pro',
+              'pettogether Pro'),
           style: const TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,

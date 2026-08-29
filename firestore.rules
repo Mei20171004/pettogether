@@ -60,6 +60,31 @@ service cloud.firestore {
         && data.expiresAt <= request.time + duration.value(24, 'h');
     }
 
+    function validMedicationPlan(data) {
+      return data.petId is string
+        && data.petId.size() > 0
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 120
+        && data.isActive is bool
+        && data.revision is int;
+    }
+
+    function validHealthRecord(data) {
+      return data.petId is string
+        && data.petId.size() > 0
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() <= 120
+        && data.type is string
+        && data.occurredAt is timestamp
+        && (!('notes' in data) || data.notes == null
+            || (data.notes is string && data.notes.size() <= 2000))
+        && (!('attachments' in data) || data.attachments == null
+            || (data.attachments is list && data.attachments.size() <= 10))
+        && data.revision is int;
+    }
+
     // The exact-link holder may claim an active invitation once; the same
     // transaction must create their pending join request.
     function validPendingJoin(data, caregiverId, householdId) {
@@ -232,6 +257,28 @@ service cloud.firestore {
       match /tasks/{taskId} {
         allow read: if isMember(householdId);
         allow create, update, delete: if isMember(householdId);
+      }
+
+      // -------------------------------------------------------------------
+      // Health records
+      //
+      // Doses are not here: a dose is a task under /tasks, expanded from a
+      // routine that carries the course's medicationPlanId. These collections
+      // hold only the drug details and the medical history.
+      // -------------------------------------------------------------------
+
+      match /medicationPlans/{planId} {
+        allow read: if isMember(householdId);
+        allow create, update: if isMember(householdId)
+          && validMedicationPlan(request.resource.data);
+        allow delete: if isMember(householdId);
+      }
+
+      match /healthRecords/{recordId} {
+        allow read: if isMember(householdId);
+        allow create, update: if isMember(householdId)
+          && validHealthRecord(request.resource.data);
+        allow delete: if isMember(householdId);
       }
     }
   }

@@ -1,23 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../l10n/l10n.dart';
-import '../models/care_catalog.dart';
-import '../models/models.dart';
-import '../store/care_store.dart';
-import 'pet_insights_view.dart';
-import 'widgets/common.dart';
+import '../../l10n/l10n.dart';
+import '../../models/care_catalog.dart';
+import '../../models/models.dart';
+import '../../store/care_store.dart';
+import '../../theme/app_theme.dart';
+import '../widgets/common.dart';
+import 'pet_health_section.dart';
 
-/// The "Activity" tab: a pet selector plus the pet insights
-/// (today / this week / trends) for the selected pet.
-class ActivityView extends StatefulWidget {
-  const ActivityView({super.key});
+/// The Health tab: pick a pet, see its whole health file.
+///
+/// Health used to live two taps down, behind a pet photo and a segmented
+/// control. It earns a place in the main navigation because medication and
+/// medical history are the things people most need to check quickly and
+/// least want to hunt for.
+class HealthView extends StatefulWidget {
+  const HealthView({super.key});
 
   @override
-  State<ActivityView> createState() => _ActivityViewState();
+  State<HealthView> createState() => _HealthViewState();
 }
 
-class _ActivityViewState extends State<ActivityView> {
+class _HealthViewState extends State<HealthView> {
   String? _petID;
 
   @override
@@ -32,8 +37,7 @@ class _ActivityViewState extends State<ActivityView> {
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: Text(
-            L10n.text(language, 'Activity', 'アクティビティ', '活动', '활동')),
+        title: Text(L10n.text(language, 'Health', '健康', '健康', '건강')),
       ),
       body: Stack(
         children: [
@@ -43,16 +47,19 @@ class _ActivityViewState extends State<ActivityView> {
               children: [
                 if (pets.length > 1)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 4),
-                    child: _petSelector(pets, selectedID, language),
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 6),
+                    child: _petSelector(pets, selectedID),
                   ),
                 if (pet != null)
-                  Expanded(child: PetInsightsView(pet: pet))
+                  Expanded(child: PetHealthSection(pet: pet))
                 else
                   Expanded(
                     child: Center(
-                      child: Text(L10n.text(language, 'No pets yet',
-                          'まだペットがいません', '还没有宠物', '아직 반려동물이 없습니다')),
+                      child: Text(
+                        L10n.text(language, 'No pets yet', 'まだペットがいません',
+                            '还没有宠物', '아직 반려동물이 없습니다'),
+                        style: const TextStyle(color: PawColors.muted),
+                      ),
                     ),
                   ),
               ],
@@ -63,8 +70,7 @@ class _ActivityViewState extends State<ActivityView> {
     );
   }
 
-  Widget _petSelector(
-      List<Pet> pets, String? selectedID, AppLanguage language) {
+  Widget _petSelector(List<Pet> pets, String? selectedID) {
     return SizedBox(
       height: 40,
       child: ListView(

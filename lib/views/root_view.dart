@@ -6,8 +6,8 @@ import '../models/models.dart';
 import '../services/ai_service.dart';
 import '../store/care_store.dart';
 import '../theme/app_theme.dart';
-import 'activity_view.dart';
 import 'ai_result_view.dart';
+import 'health/health_view.dart';
 import 'create_join_view.dart';
 import 'manage_household_view.dart';
 import 'schedule_view.dart';
@@ -138,7 +138,7 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
         children: const [
           TodayView(),
           ScheduleView(),
-          ActivityView(),
+          HealthView(),
           ManageHouseholdView(),
         ],
       ),
@@ -160,8 +160,8 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
                 label: L10n.text(language, 'Calendar', 'カレンダー', '日历', '캘린더'),
               ),
               NavigationDestination(
-                icon: const Icon(Icons.history),
-                label: L10n.text(language, 'Activity', 'アクティビティ', '活动', '활동'),
+                icon: const Icon(Icons.favorite_border),
+                label: L10n.text(language, 'Health', '健康', '健康', '건강'),
               ),
               NavigationDestination(
                 icon: const Icon(Icons.group),

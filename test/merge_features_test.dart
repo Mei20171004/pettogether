@@ -75,10 +75,10 @@ void main() {
         createdAt: DateTime.now(),
         expiresAt: DateTime.now().add(const Duration(hours: 24)),
       );
-      expect(invitation.deepLink, 'copaw://invite/inv-123');
+      expect(invitation.deepLink, 'pettogether://invite/inv-123');
       expect(invitation.isActive, isTrue);
       final parsed = Uri.parse(invitation.deepLink);
-      expect(parsed.scheme, 'copaw');
+      expect(parsed.scheme, 'pettogether');
       expect(parsed.host, 'invite');
       expect(parsed.pathSegments.last, 'inv-123');
     });
@@ -105,7 +105,7 @@ void main() {
     test('deep-link preview works through the store', () async {
       final store = CareStore(MockCareService());
       await store.restoreSession();
-      await store.previewInvitation('copaw://invite/PAW123');
+      await store.previewInvitation('pettogether://invite/PAW123');
       expect(store.invitationPreview, isNotNull);
     });
 

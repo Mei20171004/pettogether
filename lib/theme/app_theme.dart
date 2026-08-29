@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../models/health.dart';
 import '../models/models.dart';
 
-/// The copaw color palette, ported from `co-paw/copaw/Views/Theme.swift`.
+/// The pettogether color palette, ported from `co-paw/copaw/Views/Theme.swift`.
 abstract final class PawColors {
   static const Color green = Color(0xFF298C63);
   static const Color cream = Color(0xFFFCFAF5);
@@ -133,4 +134,64 @@ ButtonStyle pawCompactButtonStyle(Color color, {bool filled = false}) {
     ),
     elevation: const WidgetStatePropertyAll(0),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Health records
+// ---------------------------------------------------------------------------
+
+/// Per-medication-form icon, so a caregiver who has never given this medicine
+/// can tell a tablet from eye drops at a glance.
+IconData medicationFormIcon(MedicationForm form) {
+  return switch (form) {
+    MedicationForm.oral => Icons.medication,
+    MedicationForm.topical => Icons.healing,
+    MedicationForm.injection => Icons.vaccines,
+    MedicationForm.eyeDrop => Icons.remove_red_eye_outlined,
+    MedicationForm.earDrop => Icons.hearing,
+    MedicationForm.inhaler => Icons.air,
+    MedicationForm.powder => Icons.grain,
+    MedicationForm.other => Icons.medical_services_outlined,
+  };
+}
+
+IconData healthRecordIcon(HealthRecordType type) {
+  return switch (type) {
+    HealthRecordType.vetVisit => Icons.local_hospital,
+    HealthRecordType.vaccination => Icons.vaccines,
+    HealthRecordType.deworming => Icons.bug_report,
+    HealthRecordType.labResult => Icons.science_outlined,
+    HealthRecordType.surgery => Icons.medical_services,
+    HealthRecordType.symptom => Icons.sick_outlined,
+    HealthRecordType.weight => Icons.monitor_weight_outlined,
+    HealthRecordType.medication => Icons.medication,
+    HealthRecordType.note => Icons.sticky_note_2_outlined,
+  };
+}
+
+Color healthRecordAccent(HealthRecordType type) {
+  return switch (type) {
+    HealthRecordType.vetVisit => PawColors.rose,
+    HealthRecordType.vaccination => PawColors.green,
+    HealthRecordType.deworming => PawColors.green,
+    HealthRecordType.labResult => PawColors.blue,
+    HealthRecordType.surgery => PawColors.rose,
+    HealthRecordType.symptom => PawColors.yellow,
+    HealthRecordType.weight => PawColors.blue,
+    HealthRecordType.medication => PawColors.rose,
+    HealthRecordType.note => PawColors.purple,
+  };
+}
+
+/// State color for a medication dose, which is an ordinary care task.
+///
+/// Overdue borrows the same rose as the urgent badge, so "needs attention"
+/// reads the same everywhere.
+Color doseStateColor(CareTaskStatus status, {bool isOverdue = false}) {
+  return switch (status) {
+    CareTaskStatus.completed => PawColors.green,
+    CareTaskStatus.skipped => PawColors.yellow,
+    CareTaskStatus.claimed => PawColors.purple,
+    CareTaskStatus.unclaimed => isOverdue ? PawColors.rose : PawColors.muted,
+  };
 }

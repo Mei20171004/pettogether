@@ -13,5 +13,14 @@ service firebase.storage {
     match /households/{householdId}/pets/{fileName} {
       allow read, write: if isMember(householdId);
     }
+
+    // 病历附件路径：households/{家庭ID}/records/{病历ID}/{文件名}
+    // 化验单、处方、患处照片等，只有该家庭成员可读写。
+    match /households/{householdId}/records/{recordId}/{fileName} {
+      allow read: if isMember(householdId);
+      allow write: if isMember(householdId)
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
   }
 }

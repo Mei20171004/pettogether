@@ -4,15 +4,22 @@ import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
 import '../models/care_catalog.dart';
+import '../models/health.dart';
 import '../models/models.dart';
 import '../store/care_store.dart';
 import '../theme/app_theme.dart';
+import '../utils/id.dart';
+import 'health/medication_details_form.dart';
 import 'widgets/common.dart';
 
 class AddTaskView extends StatefulWidget {
-  const AddTaskView({super.key, this.initialDate});
+  const AddTaskView({super.key, this.initialDate, this.initialCategory});
 
   final DateTime? initialDate;
+
+  /// Preselects a category, so "new course" on the health page opens the same
+  /// form the "+" button does, already on medication.
+  final CareCategory? initialCategory;
 
   @override
   State<AddTaskView> createState() => _AddTaskViewState();
@@ -29,21 +36,55 @@ class _AddTaskViewState extends State<AddTaskView> {
   final Set<String> _petIds = {};
   final List<int> _weekdays = [1, 2, 3, 4, 5, 6, 7];
 
+  /// Built on demand the first time the medication category is chosen, so an
+  /// ordinary task never pays for it.
+  MedicationDetailsController? _medication;
+
+  /// Medication needs more than a title: the medicine, the dose at each time,
+  /// and how long the course runs.
+  bool get _isMedication => _category == CareCategory.medication;
+
+  MedicationDetailsController get _medicationController {
+    final existing = _medication;
+    if (existing != null) return existing;
+    final created = MedicationDetailsController(startDate: _dueDate)
+      ..addListener(_onMedicationChanged);
+    _medication = created;
+    return created;
+  }
+
+  /// The save button depends on the medicine name, so keep them in step.
+  void _onMedicationChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
     final base = widget.initialDate ?? DateTime.now();
     _dueDate = DateTime(base.year, base.month, base.day,
         DateTime.now().hour, DateTime.now().minute);
+    final initial = widget.initialCategory;
+    if (initial != null) {
+      _category = initial;
+      if (initial == CareCategory.medication) _kind = CareTaskKind.routine;
+    }
   }
 
   @override
   void dispose() {
     _title.dispose();
+    _medication?..removeListener(_onMedicationChanged)
+      ..dispose();
     super.dispose();
   }
 
-  bool get _canSave => _title.text.trim().isNotEmpty;
+  bool get _canSave {
+    if (_isMedication) {
+      return _medicationController.nameController.text.trim().isNotEmpty;
+    }
+    return _title.text.trim().isNotEmpty;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -176,10 +217,11 @@ class _AddTaskViewState extends State<AddTaskView> {
                         ),
                       ),
                     const SizedBox(height: 20),
-                    PetCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                    if (!_isMedication)
+                      PetCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                           _fieldLabel(
                             L10n.text(language, 'Frequency', '頻度', '频率', '빈도'),
                             Icons.repeat,
@@ -278,8 +320,29 @@ class _AddTaskViewState extends State<AddTaskView> {
                             ],
                           ],
                         ],
+                        ),
                       ),
-                    ),
+                    if (_isMedication)
+                      PetCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _fieldLabel(
+                              L10n.text(language, 'Which days', '曜日', '哪几天',
+                                  '요일'),
+                              Icons.repeat,
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                for (final day in _weekdayOptions(language))
+                                  _weekdayChip(day.$1, day.$2),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     const SizedBox(height: 20),
                     PetCard(
                       child: Column(
@@ -304,29 +367,37 @@ class _AddTaskViewState extends State<AddTaskView> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    PetCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel(
-                            L10n.text(language, 'What needs to be done?',
-                                '具体的な名前', '需要做什么？', '무엇을 해야 하나요?'),
-                            Icons.checklist,
-                          ),
-                          const SizedBox(height: 9),
-                          TextField(
-                            controller: _title,
-                            onChanged: (_) => setState(() {}),
-                            decoration: petFieldDecoration(
-                              hintText: L10n.text(language,
-                                  'For example: Morning meal',
-                                  '例：朝ごはん', '例如：早餐', '예: 아침 식사'),
-                            ),
-                          ),
-                        ],
+                    if (_isMedication)
+                      MedicationDetailsForm(
+                        controller: _medicationController,
+                        weekdays: _weekdays,
+                        language: language,
                       ),
-                    ),
-                    const SizedBox(height: 20),
+                    if (!_isMedication)
+                      PetCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _fieldLabel(
+                              L10n.text(language, 'What needs to be done?',
+                                  '具体的な名前', '需要做什么？', '무엇을 해야 하나요?'),
+                              Icons.checklist,
+                            ),
+                            const SizedBox(height: 9),
+                            TextField(
+                              controller: _title,
+                              onChanged: (_) => setState(() {}),
+                              decoration: petFieldDecoration(
+                                hintText: L10n.text(language,
+                                    'For example: Morning meal',
+                                    '例：朝ごはん', '例如：早餐', '예: 아침 식사'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (!_isMedication) const SizedBox(height: 20),
+                    if (!_isMedication)
                     PetCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -465,6 +536,10 @@ class _AddTaskViewState extends State<AddTaskView> {
   }
 
   Future<void> _save(CareStore store) async {
+    if (_isMedication) {
+      await _saveMedicationCourse(store);
+      return;
+    }
     final saved = await store.addTask(
       title: _title.text.trim(),
       category: _category,
@@ -479,6 +554,37 @@ class _AddTaskViewState extends State<AddTaskView> {
       petIds: _petIds.toList(),
     );
     if (saved && mounted) Navigator.of(context).pop();
+  }
+
+  /// A course is a [MedicationPlan] plus one routine per dose time, which is
+  /// what makes its doses ordinary, claimable care tasks.
+  Future<void> _saveMedicationCourse(CareStore store) async {
+    final caregiver = store.currentCaregiver;
+    final petId = _petIds.isNotEmpty
+        ? _petIds.first
+        : store.household?.pets.firstOrNull?.id;
+    if (caregiver == null || petId == null) return;
+
+    final details = _medicationController.read();
+    final saved = await store.saveMedicationCourse(
+      plan: MedicationPlan(
+        id: uuid(),
+        petId: petId,
+        name: details.name,
+        form: details.form,
+        purpose: details.purpose,
+        sideEffects: details.sideEffects,
+        remainingDoses: details.remainingDoses,
+        createdByID: caregiver.id,
+        createdByNameSnapshot: caregiver.displayName,
+        createdAt: DateTime.now(),
+      ),
+      times: details.times,
+      weekdays: _weekdays,
+      startDate: details.startDate,
+      endDate: details.endDate,
+    );
+    if (saved != null && mounted) Navigator.of(context).pop();
   }
 
   bool get _needsWeekdays =>
@@ -763,7 +869,15 @@ class _AddTaskViewState extends State<AddTaskView> {
     final selected = _category == category;
     final color = categoryAccent(category);
     return InkWell(
-      onTap: () => setState(() => _category = category),
+      onTap: () => setState(() {
+      _category = category;
+      // A course is always recurring, and its schedule lives in the
+      // medicine card below rather than in the one-off date picker.
+      if (category == CareCategory.medication) {
+        _kind = CareTaskKind.routine;
+        _medicationController;
+      }
+    }),
       borderRadius: BorderRadius.circular(17),
       child: Container(
         decoration: BoxDecoration(
@@ -832,22 +946,8 @@ class _AddTaskViewState extends State<AddTaskView> {
     );
   }
 
-  Widget _fieldLabel(String title, IconData icon) {
-    return Row(
-      children: [
-        Icon(icon, size: 15, color: PawColors.purpleDark),
-        const SizedBox(width: 6),
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: PawColors.purpleDark,
-          ),
-        ),
-      ],
-    );
-  }
+  Widget _fieldLabel(String title, IconData icon) =>
+      fieldLabel(title, icon);
 
   String _scheduledDateText(AppLanguage language) {
     return switch (language) {

@@ -25,7 +25,7 @@ Future<void> main() async {
   final language = await AppLanguageStore.load();
   final services = await _createServices();
 
-  runApp(CopawApp(
+  runApp(PetTogetherApp(
     language: language,
     service: services.service,
     notifications: services.notifications,

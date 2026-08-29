@@ -1,4 +1,4 @@
-// Smoke test for the copaw Flutter app.
+// Smoke test for the pettogether Flutter app.
 //
 // The app boots into the offline mock service, so this simply verifies the
 // root widget tree mounts without throwing.
@@ -15,12 +15,12 @@ void main() {
     SharedPreferences.setMockInitialValues({});
 
     await tester.pumpWidget(
-      CopawApp(language: AppLanguage.english, service: MockCareService()),
+      PetTogetherApp(language: AppLanguage.english, service: MockCareService()),
     );
 
     // Session restore is async; settle timers and rebuild.
     await tester.pumpAndSettle();
 
-    expect(find.text('copaw'), findsOneWidget);
+    expect(find.text('pettogether'), findsOneWidget);
   });
 }

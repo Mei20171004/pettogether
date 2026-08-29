@@ -9,6 +9,7 @@ import '../store/care_store.dart';
 import '../theme/app_theme.dart';
 import '../utils/care_calendar.dart';
 import 'add_task_view.dart';
+import 'pet_insights_view.dart';
 import 'widgets/common.dart';
 import 'widgets/task_card.dart';
 
@@ -25,6 +26,10 @@ class _ScheduleViewState extends State<ScheduleView> {
   DateTime _selectedDate = DateTime.now();
   _Filter _filter = _Filter.all;
   String? _petID;
+
+  /// 0 = the month view and its agenda, 1 = the per-pet insights that used to
+  /// be their own tab. Both read the same pet selection.
+  int _pane = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -61,26 +66,88 @@ class _ScheduleViewState extends State<ScheduleView> {
         children: [
           const PetScreenBackground(),
           SafeArea(
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _calendarCard(context, store, language),
-                    const SizedBox(height: 12),
-                    _petFilterBar(store, language),
-                    const SizedBox(height: 12),
-                    _filterBar(language),
-                    const SizedBox(height: 18),
-                    _agenda(context, store, language),
-                  ],
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+                  child: SegmentedButton<int>(
+                    showSelectedIcon: false,
+                    segments: [
+                      ButtonSegment(
+                        value: 0,
+                        icon: const Icon(Icons.calendar_month, size: 16),
+                        label: Text(L10n.text(
+                            language, 'Schedule', '予定', '日程', '일정')),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        icon: const Icon(Icons.insights, size: 16),
+                        label: Text(L10n.text(
+                            language, 'Insights', '傾向', '洞察', '인사이트')),
+                      ),
+                    ],
+                    selected: {_pane},
+                    onSelectionChanged: (s) => setState(() => _pane = s.first),
+                  ),
                 ),
-              ),
+                Expanded(
+                  child: _pane == 0
+                      ? _schedulePane(context, store, language)
+                      : _insightsPane(store, language),
+                ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _schedulePane(
+      BuildContext context, CareStore store, AppLanguage language) {
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _calendarCard(context, store, language),
+            const SizedBox(height: 12),
+            _petFilterBar(store, language),
+            const SizedBox(height: 12),
+            _filterBar(language),
+            const SizedBox(height: 18),
+            _agenda(context, store, language),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The former Activity tab. [PetInsightsView] lays itself out against a
+  /// bounded height, so it stays inside the Expanded rather than a scroll view.
+  Widget _insightsPane(CareStore store, AppLanguage language) {
+    final pets = store.household?.pets ?? const <Pet>[];
+    final selectedID = _petID ?? pets.firstOrNull?.id;
+    final pet = pets.where((p) => p.id == selectedID).firstOrNull;
+    if (pet == null) {
+      return Center(
+        child: Text(
+          L10n.text(language, 'No pets yet', 'まだペットがいません', '还没有宠物',
+              '아직 반려동물이 없습니다'),
+          style: const TextStyle(color: PawColors.muted),
+        ),
+      );
+    }
+    return Column(
+      children: [
+        if (pets.length > 1)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 4),
+            child: _petFilterBar(store, language),
+          ),
+        Expanded(child: PetInsightsView(pet: pet)),
+      ],
     );
   }
 
@@ -163,8 +230,11 @@ class _ScheduleViewState extends State<ScheduleView> {
                 isToday: _sameDay(date, DateTime.now()),
                 tasks: store
                     .tasksOn(date)
-                    .where((t) => _petID == null || t.petID == _petID)
+                    .where(_matchesPet)
                     .toList(),
+                medicationDays: store
+                    .doseTasksOn(date, petId: _petID)
+                    .isNotEmpty,
                 onTap: () => setState(() => _selectedDate = date),
               );
             },
@@ -259,14 +329,18 @@ class _ScheduleViewState extends State<ScheduleView> {
     );
   }
 
+  /// A task with no pets is a household-wide one and matches every filter.
+  bool _matchesPet(CareTask task) {
+    if (_petID == null) return true;
+    final petIds = task.effectivePetIds;
+    return petIds.isEmpty || petIds.contains(_petID);
+  }
+
   Widget _agenda(
       BuildContext context, CareStore store, AppLanguage language) {
     final locale = language.rawValue;
-    final allTasks = store.tasksOn(_selectedDate).where((t) {
-      if (_petID == null) return true;
-      final petIds = t.effectivePetIds;
-      return petIds.isEmpty || petIds.contains(_petID);
-    }).toList();
+    final allTasks =
+        store.tasksOn(_selectedDate).where(_matchesPet).toList();
     final routineTasks =
         allTasks.where((t) => t.kind == CareTaskKind.routine).toList();
     final oneOffTasks =
@@ -429,6 +503,7 @@ class _DayCell extends StatelessWidget {
     required this.isSelected,
     required this.isToday,
     required this.tasks,
+    required this.medicationDays,
     required this.onTap,
   });
 
@@ -436,6 +511,10 @@ class _DayCell extends StatelessWidget {
   final bool isSelected;
   final bool isToday;
   final List<CareTask> tasks;
+
+  /// Whether any medication is due on this day, shown as its own glyph so a
+  /// course is visible at a glance across the month.
+  final bool medicationDays;
   final VoidCallback onTap;
 
   @override
@@ -493,6 +572,12 @@ class _DayCell extends StatelessWidget {
                     Icon(Icons.error,
                         size: 8,
                         color: isSelected ? Colors.white : indicatorColor),
+                  ],
+                  if (medicationDays) ...[
+                    const SizedBox(width: 2),
+                    Icon(Icons.medication,
+                        size: 8,
+                        color: isSelected ? Colors.white : PawColors.rose),
                   ],
                   if (hasSkipped) ...[
                     const SizedBox(width: 2),

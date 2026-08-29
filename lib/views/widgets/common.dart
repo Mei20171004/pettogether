@@ -51,7 +51,7 @@ class CareIcon extends StatelessWidget {
   }
 }
 
-/// Hero illustration shipped as an asset (the SwiftUI `CopawPets` image).
+/// Hero illustration shipped as an asset.
 class PetArtwork extends StatelessWidget {
   const PetArtwork({super.key, this.height = 180});
 
@@ -64,7 +64,7 @@ class PetArtwork extends StatelessWidget {
         top: Radius.circular(28),
       ),
       child: Image.asset(
-        'assets/images/copaw_pets.png',
+        'assets/images/pettogether_pets.png',
         height: height,
         width: double.infinity,
         fit: BoxFit.cover,
@@ -231,5 +231,24 @@ InputDecoration petFieldDecoration({String? hintText}) {
       borderRadius: BorderRadius.circular(15),
       borderSide: const BorderSide(color: PawColors.purple, width: 1.4),
     ),
+  );
+}
+
+/// Small purple caption above a form field group, used across the task and
+/// medication forms.
+Widget fieldLabel(String title, IconData icon) {
+  return Row(
+    children: [
+      Icon(icon, size: 15, color: PawColors.purpleDark),
+      const SizedBox(width: 6),
+      Text(
+        title,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: PawColors.purpleDark,
+        ),
+      ),
+    ],
   );
 }
