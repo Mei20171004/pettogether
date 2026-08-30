@@ -49,8 +49,8 @@ class TaskCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CareIcon(
-                    icon: categoryIcon(task.category),
+                  EmojiCareIcon(
+                    emoji: categoryEmoji(task.category),
                     color: categoryAccent(task.category),
                     size: 48,
                   ),

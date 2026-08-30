@@ -3,19 +3,30 @@ import 'package:flutter/material.dart';
 import '../models/health.dart';
 import '../models/models.dart';
 
-/// The pettogether color palette, ported from `co-paw/copaw/Views/Theme.swift`.
+/// The pettogether color palette — the warm cream + blue "Copaw" look.
+///
+/// Names are kept from the original purple theme so every call site keeps
+/// working: `purple` is now the primary action blue, `purpleDark` the deep
+/// navy, `lavender` the soft sky tint, `peach` the warm cream-yellow tint.
 abstract final class PawColors {
-  static const Color green = Color(0xFF298C63);
-  static const Color cream = Color(0xFFFCFAF5);
-  static const Color blue = Color(0xFF597DE0);
-  static const Color purple = Color(0xFF7363E8);
-  static const Color purpleDark = Color(0xFF453B8C);
-  static const Color lavender = Color(0xFFEDEBFF);
-  static const Color peach = Color(0xFFFFDBC9);
-  static const Color rose = Color(0xFFFFA19E);
-  static const Color yellow = Color(0xFFFFD66E);
-  static const Color ink = Color(0xFF26243D);
-  static const Color muted = Color(0xFF73708F);
+  static const Color green = Color(0xFF27A36A);
+  static const Color cream = Color(0xFFFFF9F3);
+  static const Color blue = Color(0xFF5B8DEF);
+  static const Color purple = Color(0xFF2764DC); // primary action blue
+  static const Color purpleDark = Color(0xFF102A56); // deep navy
+  static const Color lavender = Color(0xFFEAF1FF); // soft sky tint
+  static const Color peach = Color(0xFFFFF0D6); // warm cream tint
+  static const Color rose = Color(0xFFE8756B);
+  static const Color yellow = Color(0xFFE69A16);
+  static const Color ink = Color(0xFF172033);
+  static const Color muted = Color(0xFF7A8598);
+
+  // Cozy pastel card tints, straight from the Copaw demo.
+  static const Color creamYellow = Color(0xFFFFF3DE);
+  static const Color skyTint = Color(0xFFE9F4FF);
+  static const Color mintTint = Color(0xFFE8F8F0);
+  static const Color lilacTint = Color(0xFFF0EBFF);
+  static const Color blushTint = Color(0xFFFFF0EF);
 }
 
 /// Per-category accent color and icon (Material equivalents of the SF Symbols
@@ -44,6 +55,34 @@ Color categoryAccent(CareCategory category) {
     'snakeShed' => PawColors.green,
     'snakeTerrarium' => PawColors.green,
     _ => PawColors.green,
+  };
+}
+
+/// Cozy emoji per category, matching the Copaw demo's task cards.
+String categoryEmoji(CareCategory category) {
+  if (!category.isBuiltIn) return '✨';
+  return switch (category.id) {
+    'feeding' => '🥣',
+    'walking' => '🦮',
+    'medication' => '💊',
+    'grooming' => '🧼',
+    'hospital' => '🏥',
+    'deworming' => '🛡️',
+    'nailTrim' => '✂️',
+    'peePad' => '🧻',
+    'catLitter' => '🧹',
+    'water' => '💧',
+    'newFood' => '🍖',
+    'dogBath' => '🛁',
+    'dogTraining' => '🎾',
+    'birdCage' => '🐦',
+    'birdFeather' => '🪶',
+    'rabbitHay' => '🌾',
+    'rabbitBedding' => '🛌',
+    'snakeFeed' => '🐁',
+    'snakeShed' => '🐍',
+    'snakeTerrarium' => '🌿',
+    _ => '🐾',
   };
 }
 

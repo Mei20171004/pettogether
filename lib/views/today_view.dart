@@ -282,109 +282,126 @@ class _TodayViewState extends State<TodayView> {
                 '✨ いいチームワーク、この調子！', '✨ 大家配合得很棒，继续保持！',
                 '✨ 팀워크 최고예요, 계속 가요!');
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [PawColors.purple, PawColors.purpleDark],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.97),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
+          boxShadow: [
+            BoxShadow(
+              color: PawColors.purpleDark.withValues(alpha: 0.08),
+              blurRadius: 18,
+              offset: const Offset(0, 9),
+            ),
+          ],
         ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: PawColors.purpleDark.withValues(alpha: 0.28),
-            blurRadius: 18,
-            offset: const Offset(0, 9),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      L10n.text(language, "Today's care progress",
-                          '今日のケア進捗', '今日照护进度', '오늘의 케어 진행'),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: 0.78),
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text.rich(
-                      TextSpan(
-                        text:
-                            '${L10n.text(language, 'Done', '完了', '已完成', '완료')} $completed',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                        children: [
-                          TextSpan(
-                            text:
-                                ' / $total ${L10n.text(language, 'tasks', '件', '项', '건')}',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white.withValues(alpha: 0.72),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                width: 54,
-                height: 54,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.16),
+        child: Stack(
+          children: [
+            // Soft sky orb peeking in from the corner, like the Copaw card.
+            Positioned(
+              top: -46,
+              right: -36,
+              child: Container(
+                width: 130,
+                height: 130,
+                decoration: const BoxDecoration(
+                  color: PawColors.lavender,
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.35),
-                  ),
-                ),
-                child: Text(
-                  '$percent%',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: total == 0 ? 0 : completed / total,
-              minHeight: 8,
-              backgroundColor: Colors.white.withValues(alpha: 0.22),
-              valueColor: const AlwaysStoppedAnimation(PawColors.yellow),
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            tip,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withValues(alpha: 0.88),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              L10n.text(language, "Today's care progress",
+                                  '今日のケア進捗', '今日照护进度', '오늘의 케어 진행'),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: PawColors.muted,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text.rich(
+                              TextSpan(
+                                text:
+                                    '${L10n.text(language, 'Done', '完了', '已完成', '완료')} $completed',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: PawColors.purpleDark,
+                                ),
+                                children: [
+                                  TextSpan(
+                                    text:
+                                        ' / $total ${L10n.text(language, 'tasks', '件', '项', '건')}',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: PawColors.muted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        width: 54,
+                        height: 54,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: PawColors.skyTint,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$percent%',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: PawColors.purple,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: total == 0 ? 0 : completed / total,
+                      minHeight: 8,
+                      backgroundColor: PawColors.lavender,
+                      valueColor:
+                          const AlwaysStoppedAnimation(PawColors.purple),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    tip,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: PawColors.ink,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -516,7 +533,7 @@ class _TodayViewState extends State<TodayView> {
           padding: 14,
           child: Row(
             children: [
-              CareIcon(icon: Icons.vaccines, color: color, size: 40),
+              EmojiCareIcon(emoji: '💉', color: color, size: 40),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -569,7 +586,7 @@ class _TodayViewState extends State<TodayView> {
     return PetCard(
       child: Column(
         children: [
-          const CareIcon(icon: Icons.check, color: PawColors.green, size: 56),
+          const EmojiCareIcon(emoji: '🎉', color: PawColors.green, size: 56),
           const SizedBox(height: 10),
           Text(
             L10n.text(language, 'Everything is handled', '全部おわり',

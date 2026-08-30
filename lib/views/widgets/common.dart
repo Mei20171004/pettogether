@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
-/// Soft cream-to-lavender screen background used across the app.
+/// Warm cream screen background used across the app.
 class PetScreenBackground extends StatelessWidget {
   const PetScreenBackground({super.key});
 
@@ -13,12 +13,40 @@ class PetScreenBackground extends StatelessWidget {
         gradient: LinearGradient(
           colors: [
             PawColors.cream,
-            Color(0xCCEDEBFF), // pawLavender @ ~0.72 opacity
+            Color(0xCCFFF3DE), // creamYellow @ ~0.8 opacity
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
+    );
+  }
+}
+
+/// Rounded emoji tile on a pastel tint, matching the Copaw demo's task icons.
+class EmojiCareIcon extends StatelessWidget {
+  const EmojiCareIcon({
+    super.key,
+    required this.emoji,
+    required this.color,
+    this.size = 44,
+  });
+
+  final String emoji;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(size * 0.32),
+      ),
+      alignment: Alignment.center,
+      child: Text(emoji, style: TextStyle(fontSize: size * 0.44)),
     );
   }
 }
