@@ -1,0 +1,258 @@
+{
+  "environment": "emulator",
+  "projectID": "demo-copaw",
+  "documents": [
+    {
+      "path": "households/home-a",
+      "data": {
+        "name": "Synthetic home",
+        "petName": "Synthetic pet",
+        "timeZoneIdentifier": "Asia/Tokyo"
+      }
+    },
+    {
+      "path": "households/home-b",
+      "data": {
+        "name": "Needs repair",
+        "petName": "Synthetic pet"
+      }
+    },
+    {
+      "path": "households/home-a/tasks/canonical-task",
+      "data": {
+        "title": "Synthetic care",
+        "status": "unclaimed",
+        "assignmentRequestID": null,
+        "requestedByID": null,
+        "requestedByName": null,
+        "assignmentMode": null,
+        "requestedToID": null,
+        "requestedToName": null,
+        "assignmentRequestedAt": null,
+        "assigneeID": null,
+        "assigneeName": null,
+        "claimedAt": null,
+        "completedByID": null,
+        "completedBy": null,
+        "completedAt": null,
+        "revision": 1
+      }
+    },
+    {
+      "path": "households/home-a/tasks/legacy-task",
+      "data": {
+        "title": "Legacy synthetic care",
+        "status": "unclaimed"
+      }
+    },
+    {
+      "path": "households/home-a/tasks/partial-request",
+      "data": {
+        "title": "Partial synthetic request",
+        "status": "unclaimed",
+        "assignmentRequestID": "request-a"
+      }
+    },
+    {
+      "path": "households/home-a/tasks/malformed-task",
+      "data": {
+        "title": "Missing status"
+      }
+    },
+    {
+      "path": "inviteCodes/ABC234",
+      "data": {
+        "householdID": "home-a"
+      }
+    },
+    {
+      "path": "households/home-a/healthRecords/legacy-health",
+      "data": {
+        "schemaVersion": 1,
+        "petID": "legacy-primary",
+        "petName": "Synthetic pet",
+        "type": "weight",
+        "recordedAt": "2026-08-16T01:00:00.000Z",
+        "weightKilograms": 4.2,
+        "createdByID": "synthetic-member",
+        "createdByName": "Synthetic caregiver",
+        "createdAt": "2026-08-16T01:00:01.000Z"
+      }
+    },
+    {
+      "path": "households/home-a/healthRecords/legacy-daily",
+      "data": {
+        "schemaVersion": 1,
+        "petID": "legacy-primary",
+        "petName": "Synthetic pet",
+        "type": "dailyCheckIn",
+        "recordedAt": "2026-08-16T02:00:00.000Z",
+        "waterLevel": "usual",
+        "appetiteLevel": "usual",
+        "urinationLevel": "usual",
+        "stoolStatus": "usual",
+        "energyLevel": "usual",
+        "moodStatus": "usual",
+        "createdByID": "synthetic-member",
+        "createdByName": "Synthetic caregiver",
+        "createdAt": "2026-08-16T02:00:01.000Z"
+      }
+    },
+    {
+      "path": "households/home-a/healthRecords/legacy-fractional-water",
+      "data": {
+        "schemaVersion": 1,
+        "petID": "legacy-primary",
+        "petName": "Synthetic pet",
+        "type": "waterIntake",
+        "recordedAt": "2026-08-16T02:10:00.000Z",
+        "detail": null,
+        "weightKilograms": null,
+        "waterMilliliters": 12.5,
+        "waterLevel": null,
+        "appetiteLevel": null,
+        "urinationLevel": null,
+        "stoolStatus": null,
+        "energyLevel": null,
+        "moodStatus": null,
+        "createdByID": "synthetic-member",
+        "createdByName": "Synthetic caregiver",
+        "createdAt": "2026-08-16T02:10:01.000Z"
+      }
+    },
+    {
+      "path": "households/home-a/healthRecords/malformed-v1",
+      "data": {
+        "schemaVersion": 1,
+        "type": "weight"
+      }
+    },
+    {
+      "path": "households/home-a/healthRecords/malformed-v2-weight",
+      "data": {
+        "schemaVersion": 2,
+        "petID": "legacy-primary",
+        "petName": "Synthetic pet",
+        "type": "weight",
+        "recordedAt": "2026-08-16T02:00:00.000Z",
+        "recordedLocalDate": "2026-08-16",
+        "recordedTimeZoneIdentifier": "Asia/Tokyo",
+        "detail": null,
+        "weightKilograms": null,
+        "waterMilliliters": null,
+        "waterMeasurementBasis": null,
+        "waterLevel": null,
+        "appetiteLevel": null,
+        "urinationLevel": null,
+        "stoolStatus": null,
+        "energyLevel": null,
+        "moodStatus": null,
+        "createdByID": "synthetic-member",
+        "createdByName": "Synthetic caregiver",
+        "createdAt": "2026-08-16T02:00:01.000Z"
+      }
+    },
+    {
+      "path": "households/home-a/healthRecords/mismatched-v2-date",
+      "data": {
+        "schemaVersion": 2,
+        "petID": "legacy-primary",
+        "petName": "Synthetic pet",
+        "type": "note",
+        "recordedAt": "2026-08-15T15:00:00.000Z",
+        "recordedLocalDate": "2026-08-15",
+        "recordedTimeZoneIdentifier": "Asia/Tokyo",
+        "detail": "Synthetic observation",
+        "weightKilograms": null,
+        "waterMilliliters": null,
+        "waterMeasurementBasis": null,
+        "waterLevel": null,
+        "appetiteLevel": null,
+        "urinationLevel": null,
+        "stoolStatus": null,
+        "energyLevel": null,
+        "moodStatus": null,
+        "createdByID": "synthetic-member",
+        "createdByName": "Synthetic caregiver",
+        "createdAt": "2026-08-15T15:00:01.000Z"
+      }
+    },
+    {
+      "path": "households/home-a/healthRecords/canonical-v2-note",
+      "data": {
+        "schemaVersion": 2,
+        "petID": "legacy-primary",
+        "petName": "Synthetic pet",
+        "type": "note",
+        "recordedAt": "2026-08-15T15:00:00.000Z",
+        "recordedLocalDate": "2026-08-16",
+        "recordedTimeZoneIdentifier": "Asia/Tokyo",
+        "detail": "Synthetic observation",
+        "weightKilograms": null,
+        "waterMilliliters": null,
+        "waterMeasurementBasis": null,
+        "waterLevel": null,
+        "appetiteLevel": null,
+        "urinationLevel": null,
+        "stoolStatus": null,
+        "energyLevel": null,
+        "moodStatus": null,
+        "createdByID": "synthetic-member",
+        "createdByName": "Synthetic caregiver",
+        "createdAt": "2026-08-15T15:00:01.000Z"
+      }
+    },
+    {
+      "path": "households/home-a/healthRecords/missing-v2-null-keys",
+      "data": {
+        "schemaVersion": 2,
+        "petID": "legacy-primary",
+        "petName": "Synthetic pet",
+        "type": "note",
+        "recordedAt": "2026-08-15T15:00:00.000Z",
+        "recordedLocalDate": "2026-08-16",
+        "recordedTimeZoneIdentifier": "Asia/Tokyo",
+        "detail": "Synthetic observation",
+        "createdByID": "synthetic-member",
+        "createdByName": "Synthetic caregiver",
+        "createdAt": "2026-08-15T15:00:01.000Z"
+      }
+    },
+    {
+      "path": "households/home-a/healthRecords/unexpected-v2-key",
+      "data": {
+        "schemaVersion": 2,
+        "petID": "legacy-primary",
+        "petName": "Synthetic pet",
+        "type": "note",
+        "recordedAt": "2026-08-15T15:00:00.000Z",
+        "recordedLocalDate": "2026-08-16",
+        "recordedTimeZoneIdentifier": "Asia/Tokyo",
+        "detail": "Synthetic observation",
+        "weightKilograms": null,
+        "waterMilliliters": null,
+        "waterMeasurementBasis": null,
+        "waterLevel": null,
+        "appetiteLevel": null,
+        "urinationLevel": null,
+        "stoolStatus": null,
+        "energyLevel": null,
+        "moodStatus": null,
+        "createdByID": "synthetic-member",
+        "createdByName": "Synthetic caregiver",
+        "createdAt": "2026-08-15T15:00:01.000Z",
+        "unexpectedHealthField": "not allowed"
+      }
+    }
+  ],
+  "excludedByScopeDocuments": [
+    {
+      "path": "households/home-a/collaborationEvents/event-a",
+      "data": { "schemaVersion": 2, "action": "request" }
+    },
+    {
+      "path": "users/member-a/notificationInbox/intent-a",
+      "data": { "schemaVersion": 1, "status": "active" }
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+.DS_Store
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Xcode build artifacts
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Firebase CLI cache
+.firebase/
+node_modules/
+*-debug.log
+firebase-debug*.log
+
+# Firebase Apple client configuration
+**/GoogleService-Info.plist
+**/google-services.json
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Carthage
+Carthage/Build/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output

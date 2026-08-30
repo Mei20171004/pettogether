@@ -1,0 +1,1174 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberPath(householdID, memberID) {
+      return /databases/$(database)/documents/households/$(householdID)/members/$(memberID);
+    }
+
+    function isMember(householdID) {
+      return signedIn() && exists(memberPath(householdID, request.auth.uid));
+    }
+
+    function isMemberID(householdID, memberID) {
+      return memberID is string && exists(memberPath(householdID, memberID));
+    }
+
+    function member(householdID) {
+      return get(memberPath(householdID, request.auth.uid));
+    }
+
+    function notificationInboxPath(userID, intentID) {
+      return /databases/$(database)/documents/users/$(userID)/notificationInbox/$(intentID);
+    }
+
+    function canonicalNotificationID(value) {
+      return value is string && value.matches('^[a-f0-9]{64}$');
+    }
+
+    function ownsCurrentNotificationEpoch(userID, householdID, joinedAtSnapshot) {
+      return signedIn()
+        && userID == request.auth.uid
+        && householdID is string
+        && exists(memberPath(householdID, userID))
+        && joinedAtSnapshot is timestamp
+        && get(memberPath(householdID, userID)).data.joinedAt == joinedAtSnapshot;
+    }
+
+    function validNotificationInboxRead(userID, intentID, data) {
+      return data.schemaVersion == 1
+        && data.id == intentID
+        && canonicalNotificationID(intentID)
+        && data.recipientID == userID
+        && ownsCurrentNotificationEpoch(
+          userID,
+          data.householdID,
+          data.recipientJoinedAtSnapshot
+        );
+    }
+
+    function validNotificationDeliveryRead(userID, deliveryID, data) {
+      return data.schemaVersion == 2
+        && data.id == deliveryID
+        && canonicalNotificationID(deliveryID)
+        && data.recipientID == userID
+        && canonicalNotificationID(data.installationHash)
+        && ownsCurrentNotificationEpoch(
+          userID,
+          data.householdID,
+          data.recipientJoinedAtSnapshot
+        );
+    }
+
+    // A list rule that reads resource.data cannot be evaluated when the query
+    // matches nothing, which denied a member who had never received a
+    // notification. These collections are private to one signed-in user, and
+    // leaving a household now deletes that member's notification records for
+    // it, so listing is authorized from the path and a bounded query instead.
+    // Per-document authority still applies to every get.
+    function ownsPrivateNotificationScope(userID) {
+      return signedIn() && userID == request.auth.uid;
+    }
+
+    function validNotificationReadCursor(userID, householdID, data) {
+      return data.keys().hasOnly([
+          'schemaVersion', 'householdID', 'recipientJoinedAtSnapshot',
+          'createdAt', 'intentID', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'householdID', 'recipientJoinedAtSnapshot',
+          'createdAt', 'intentID', 'updatedAt'
+        ])
+        && data.schemaVersion == 1
+        && data.householdID == householdID
+        && data.createdAt is timestamp
+        && canonicalNotificationID(data.intentID)
+        && data.updatedAt == request.time
+        && ownsCurrentNotificationEpoch(
+          userID,
+          householdID,
+          data.recipientJoinedAtSnapshot
+        )
+        && exists(notificationInboxPath(userID, data.intentID))
+        && get(notificationInboxPath(userID, data.intentID)).data.id == data.intentID
+        && get(notificationInboxPath(userID, data.intentID)).data.householdID == householdID
+        && get(notificationInboxPath(userID, data.intentID)).data.recipientID == userID
+        && get(
+          notificationInboxPath(userID, data.intentID)
+        ).data.recipientJoinedAtSnapshot == data.recipientJoinedAtSnapshot
+        && get(notificationInboxPath(userID, data.intentID)).data.createdAt == data.createdAt
+        && get(notificationInboxPath(userID, data.intentID)).data.status == 'active'
+        && get(notificationInboxPath(userID, data.intentID)).data.expiresAt is timestamp
+        && get(notificationInboxPath(userID, data.intentID)).data.expiresAt > request.time;
+    }
+
+    function notificationReadCursorDoesNotRegress(before, after) {
+      return after.createdAt > before.createdAt
+        || (
+          after.createdAt == before.createdAt
+          && after.intentID >= before.intentID
+        );
+    }
+
+    function validInviteCode(code) {
+      return code is string
+        && code.size() == 6
+        && !code.matches('.*[01IO].*')
+        && code.matches('^[A-Z2-9]+$');
+    }
+
+    function readableLegacyInviteCode(code) {
+      return code is string
+        && code.size() == 6
+        && code.matches('^[A-Z0-9]+$');
+    }
+
+    function validTimeZoneIdentifier(value) {
+      return value is string
+        && (
+          value in ['UTC', 'GMT']
+          || value.matches('^[A-Za-z0-9._+-]+/[A-Za-z0-9._+/-]+$')
+        );
+    }
+
+    function taskKeysAreValid(data) {
+      return data.keys().hasOnly([
+        'id', 'title', 'category', 'dueTime', 'kind', 'priority', 'routineID',
+        'petID', 'petName',
+        'status', 'assignmentRequestID', 'requestedByID', 'requestedByName',
+        'assignmentMode', 'requestedToID', 'requestedToName', 'assignmentRequestedAt',
+        'assigneeID', 'assigneeName', 'claimedAt', 'createdByID', 'createdBy',
+        'createdAt', 'completedByID', 'completedBy', 'completedAt', 'revision',
+        'lastCollaborationAction', 'lastCollaborationActorID',
+        'lastCollaborationActorName', 'lastCollaborationTargetID',
+        'lastCollaborationTargetName', 'lastCollaborationRequestID',
+        'lastCollaborationAt'
+      ]);
+    }
+
+    function petPath(householdID, petID) {
+      return /databases/$(database)/documents/households/$(householdID)/pets/$(petID);
+    }
+
+    function validPetReference(data, householdID) {
+      return data.keys().hasAll(['petID', 'petName'])
+        && data.petID is string
+        && data.petName is string
+        && exists(petPath(householdID, data.petID))
+        && get(petPath(householdID, data.petID)).data.isArchived == false
+        && data.petName == get(petPath(householdID, data.petID)).data.name;
+    }
+
+    function validNewPetReference(data, householdID) {
+      return (
+          !data.keys().hasAny(['petID', 'petName'])
+          && (
+            !exists(petPath(householdID, 'legacy-primary'))
+            || get(petPath(householdID, 'legacy-primary')).data.isArchived == false
+          )
+        )
+        || validPetReference(data, householdID);
+    }
+
+    function validHealthPetReference(data, householdID) {
+      return (
+          exists(petPath(householdID, data.petID))
+          && get(petPath(householdID, data.petID)).data.isArchived == false
+          && data.petName == get(petPath(householdID, data.petID)).data.name
+        ) || (
+          data.petID == 'legacy-primary'
+          && !exists(petPath(householdID, 'legacy-primary'))
+          && data.petName == get(
+            /databases/$(database)/documents/households/$(householdID)
+          ).data.petName
+        );
+    }
+
+    function validLegacyHealthRecord(data, householdID) {
+      return data.keys().hasOnly([
+          'schemaVersion', 'petID', 'petName', 'type', 'recordedAt', 'detail',
+          'weightKilograms', 'waterMilliliters', 'waterLevel', 'appetiteLevel',
+          'urinationLevel', 'stoolStatus', 'energyLevel', 'moodStatus',
+          'createdByID', 'createdByName', 'createdAt'
+        ])
+        && data.schemaVersion == 1
+        && data.petID is string
+        && data.petName is string
+        && data.petName.size() > 0
+        && data.petName.size() <= 60
+        && validHealthPetReference(data, householdID)
+        && data.type in [
+          'weight', 'waterIntake', 'appetite', 'energy', 'mood',
+          'stoolObservation', 'symptom', 'visit', 'vaccine', 'note'
+        ]
+        && data.recordedAt is timestamp
+        && data.recordedAt <= request.time + duration.value(5, 's')
+        && data.createdByID == request.auth.uid
+        && data.createdByName == member(householdID).data.displayName
+        && data.createdByName.size() > 0
+        && data.createdByName.size() <= 50
+        && data.createdAt == request.time
+        && (
+          (
+            data.type == 'weight'
+            && data.weightKilograms is number
+            && data.weightKilograms > 0
+            && data.weightKilograms <= 500
+            && data.get('waterMilliliters', null) == null
+            && (
+              data.detail == null
+              || (data.detail is string && data.detail.size() <= 500)
+            )
+            && data.get('waterLevel', null) == null
+            && data.get('appetiteLevel', null) == null
+            && data.get('urinationLevel', null) == null
+            && data.get('stoolStatus', null) == null
+            && data.get('energyLevel', null) == null
+            && data.get('moodStatus', null) == null
+          ) || (
+            data.type == 'waterIntake'
+            && data.get('weightKilograms', null) == null
+            && data.waterMilliliters is number
+            && data.waterMilliliters > 0
+            && data.waterMilliliters <= 10000
+            && (
+              data.detail == null
+              || (data.detail is string && data.detail.size() <= 500)
+            )
+            && data.get('waterLevel', null) == null
+            && data.get('appetiteLevel', null) == null
+            && data.get('urinationLevel', null) == null
+            && data.get('stoolStatus', null) == null
+            && data.get('energyLevel', null) == null
+            && data.get('moodStatus', null) == null
+          ) || (
+            data.type != 'weight'
+            && data.type != 'waterIntake'
+            && data.get('weightKilograms', null) == null
+            && data.get('waterMilliliters', null) == null
+            && data.get('waterLevel', null) == null
+            && data.get('appetiteLevel', null) == null
+            && data.get('urinationLevel', null) == null
+            && data.get('stoolStatus', null) == null
+            && data.get('energyLevel', null) == null
+            && data.get('moodStatus', null) == null
+            && data.detail is string
+            && data.detail.size() > 0
+            && data.detail.size() <= 500
+          )
+        );
+    }
+
+    function validCanonicalHealthRecord(data, householdID) {
+      return data.keys().hasOnly([
+          'schemaVersion', 'petID', 'petName', 'type', 'recordedAt',
+          'recordedLocalDate', 'recordedTimeZoneIdentifier', 'detail',
+          'weightKilograms', 'waterMilliliters', 'waterMeasurementBasis',
+          'waterLevel', 'appetiteLevel', 'urinationLevel', 'stoolStatus',
+          'energyLevel', 'moodStatus', 'createdByID', 'createdByName', 'createdAt'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'petID', 'petName', 'type', 'recordedAt',
+          'recordedLocalDate', 'recordedTimeZoneIdentifier', 'detail',
+          'weightKilograms', 'waterMilliliters', 'waterMeasurementBasis',
+          'waterLevel', 'appetiteLevel', 'urinationLevel', 'stoolStatus',
+          'energyLevel', 'moodStatus', 'createdByID', 'createdByName', 'createdAt'
+        ])
+        && data.schemaVersion == 2
+        && data.petID is string
+        && data.petName is string
+        && data.petName.size() > 0
+        && data.petName.size() <= 60
+        && validHealthPetReference(data, householdID)
+        && data.type in [
+          'weight', 'waterIntake', 'appetite', 'energy', 'mood',
+          'stoolObservation', 'symptom', 'visit', 'vaccine', 'note'
+        ]
+        && data.recordedAt is timestamp
+        && data.recordedAt <= request.time + duration.value(5, 's')
+        && data.recordedLocalDate is string
+        && data.recordedLocalDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.recordedTimeZoneIdentifier == get(
+          /databases/$(database)/documents/households/$(householdID)
+        ).data.timeZoneIdentifier
+        && validTimeZoneIdentifier(data.recordedTimeZoneIdentifier)
+        && data.createdByID == request.auth.uid
+        && data.createdByName == member(householdID).data.displayName
+        && data.createdByName.size() > 0
+        && data.createdByName.size() <= 50
+        && data.createdAt == request.time
+        && data.get('waterLevel', null) == null
+        && data.get('appetiteLevel', null) == null
+        && data.get('urinationLevel', null) == null
+        && data.get('stoolStatus', null) == null
+        && data.get('energyLevel', null) == null
+        && data.get('moodStatus', null) == null
+        && (
+          (
+            data.type == 'weight'
+            && data.weightKilograms is number
+            && data.weightKilograms > 0
+            && data.weightKilograms <= 500
+            && data.waterMilliliters == null
+            && data.waterMeasurementBasis == null
+            && (
+              data.detail == null
+              || (data.detail is string && data.detail.size() <= 500)
+            )
+          ) || (
+            data.type == 'waterIntake'
+            && data.weightKilograms == null
+            && data.waterMilliliters is int
+            && data.waterMilliliters > 0
+            && data.waterMilliliters <= 10000
+            && data.waterMeasurementBasis == 'singleIntake'
+            && (
+              data.detail == null
+              || (data.detail is string && data.detail.size() <= 500)
+            )
+          ) || (
+            data.type != 'weight'
+            && data.type != 'waterIntake'
+            && data.weightKilograms == null
+            && data.waterMilliliters == null
+            && data.waterMeasurementBasis == null
+            && data.detail is string
+            && data.detail.size() > 0
+            && data.detail.size() <= 500
+          )
+        );
+    }
+
+    function validHandoff(data, householdID) {
+      return data.keys().hasOnly([
+          'schemaVersion', 'careInstructions', 'emergencyContactName',
+          'emergencyContactPhone', 'veterinaryHospitalName',
+          'veterinaryHospitalPhone', 'revision', 'updatedByID',
+          'updatedByName', 'updatedAt'
+        ])
+        && data.schemaVersion == 1
+        && data.careInstructions is string
+        && data.careInstructions.size() <= 1000
+        && data.emergencyContactName is string
+        && data.emergencyContactName.size() <= 80
+        && data.emergencyContactPhone is string
+        && data.emergencyContactPhone.size() <= 40
+        && data.veterinaryHospitalName is string
+        && data.veterinaryHospitalName.size() <= 100
+        && data.veterinaryHospitalPhone is string
+        && data.veterinaryHospitalPhone.size() <= 40
+        && data.revision is int
+        && data.revision > 0
+        && data.updatedByID == request.auth.uid
+        && data.updatedByName == member(householdID).data.displayName
+        && data.updatedByName.size() > 0
+        && data.updatedByName.size() <= 50
+        && data.updatedAt == request.time;
+    }
+
+    function petReferenceIsUnchanged() {
+      return (
+          !resource.data.keys().hasAny(['petID', 'petName'])
+          && !request.resource.data.keys().hasAny(['petID', 'petName'])
+        ) || (
+          resource.data.keys().hasAll(['petID', 'petName'])
+          && request.resource.data.keys().hasAll(['petID', 'petName'])
+          && request.resource.data.petID == resource.data.petID
+          && request.resource.data.petName == resource.data.petName
+        );
+    }
+
+    function validTaskBase(data, taskID) {
+      return taskKeysAreValid(data)
+        && data.id == taskID
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() <= 120
+        && data.category in ['feeding', 'walking', 'medication', 'grooming', 'other']
+        && data.dueTime is timestamp
+        && data.kind in ['routine', 'oneOff']
+        && data.priority in ['normal', 'urgent']
+        && data.status in ['unclaimed', 'claimed', 'completed']
+        && data.createdByID is string
+        && data.createdBy is string
+        && data.createdBy.size() > 0
+        && data.createdBy.size() <= 50
+        && data.createdAt is timestamp
+        && data.revision is int
+        && data.revision >= 0;
+    }
+
+    function noRequest(data) {
+      return data.assignmentRequestID == null
+        && data.assignmentMode == null
+        && data.requestedByID == null
+        && data.requestedByName == null
+        && data.requestedToID == null
+        && data.requestedToName == null
+        && data.assignmentRequestedAt == null;
+    }
+
+    function requestShapeIsValid(data) {
+      return data.assignmentRequestID is string
+        && data.assignmentMode in ['direct', 'open']
+        && data.requestedByID is string
+        && data.requestedByName is string
+        && data.assignmentRequestedAt is timestamp
+        && (
+          (
+            data.assignmentMode == 'open'
+            && data.requestedToID == null
+            && data.requestedToName == null
+          )
+          || (
+            data.assignmentMode == 'direct'
+            && data.requestedToID is string
+            && data.requestedToName is string
+            && data.requestedByID != data.requestedToID
+          )
+        );
+    }
+
+    function validNewRequest(data, householdID) {
+      return requestShapeIsValid(data)
+        && isMemberID(householdID, data.requestedByID)
+        && data.requestedByName == get(memberPath(householdID, data.requestedByID)).data.displayName
+        && (
+          data.assignmentMode == 'open'
+          || (
+            isMemberID(householdID, data.requestedToID)
+            && data.requestedToName == get(memberPath(householdID, data.requestedToID)).data.displayName
+          )
+        );
+    }
+
+    function noAssignee(data) {
+      return data.assigneeID == null
+        && data.assigneeName == null
+        && data.claimedAt == null;
+    }
+
+    function assignedToCurrentMember(data, householdID) {
+      return data.assigneeID == request.auth.uid
+        && data.assigneeName == member(householdID).data.displayName
+        && data.claimedAt == request.time;
+    }
+
+    function noCompletion(data) {
+      return data.completedByID == null
+        && data.completedBy == null
+        && data.completedAt == null;
+    }
+
+    function revisionAdvanced() {
+      return request.resource.data.revision == resource.data.revision + 1;
+    }
+
+    function claimChangedOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'status', 'assignmentRequestID', 'requestedByID', 'requestedByName',
+        'assignmentMode', 'requestedToID', 'requestedToName', 'assignmentRequestedAt',
+        'assigneeID', 'assigneeName', 'claimedAt', 'revision',
+        'lastCollaborationAction', 'lastCollaborationActorID',
+        'lastCollaborationActorName', 'lastCollaborationTargetID',
+        'lastCollaborationTargetName', 'lastCollaborationRequestID',
+        'lastCollaborationAt'
+      ]);
+    }
+
+    function requestChangedOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'assignmentRequestID', 'requestedByID', 'requestedByName',
+        'assignmentMode', 'requestedToID', 'requestedToName', 'assignmentRequestedAt', 'revision',
+        'lastCollaborationAction', 'lastCollaborationActorID',
+        'lastCollaborationActorName', 'lastCollaborationTargetID',
+        'lastCollaborationTargetName', 'lastCollaborationRequestID',
+        'lastCollaborationAt'
+      ]);
+    }
+
+    function collaborationMarkerChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'lastCollaborationAction', 'lastCollaborationActorID',
+        'lastCollaborationActorName', 'lastCollaborationTargetID',
+        'lastCollaborationTargetName', 'lastCollaborationRequestID',
+        'lastCollaborationAt'
+      ]);
+    }
+
+    function validCollaborationMarkerBase(data, householdID) {
+      return data.keys().hasAll([
+          'lastCollaborationAction', 'lastCollaborationActorID',
+          'lastCollaborationActorName', 'lastCollaborationTargetID',
+          'lastCollaborationTargetName', 'lastCollaborationRequestID',
+          'lastCollaborationAt'
+        ])
+        && data.lastCollaborationActorID == request.auth.uid
+        && data.lastCollaborationActorName == member(householdID).data.displayName
+        && data.lastCollaborationAt == request.time
+        && (
+          (
+            data.lastCollaborationTargetID == null
+            && data.lastCollaborationTargetName == null
+          ) || (
+            data.lastCollaborationTargetID is string
+            && data.lastCollaborationTargetID.size() > 0
+            && data.lastCollaborationTargetID.size() <= 128
+            && !data.lastCollaborationTargetID.matches('.*[/].*')
+            && data.lastCollaborationTargetName is string
+            && data.lastCollaborationTargetName.size() > 0
+            && data.lastCollaborationTargetName.size() <= 50
+          )
+        );
+    }
+
+    function validTaskCreatedMarker(data, householdID) {
+      return validCollaborationMarkerBase(data, householdID)
+        && data.lastCollaborationAction == 'taskCreated'
+        && data.lastCollaborationActorID == data.createdByID
+        && data.lastCollaborationTargetID == null
+        && data.lastCollaborationRequestID == null;
+    }
+
+    function validTaskRequestMarker(data, householdID) {
+      return validCollaborationMarkerBase(data, householdID)
+        && data.lastCollaborationAction == 'taskRequested'
+        && data.lastCollaborationRequestID == data.assignmentRequestID
+        && data.lastCollaborationTargetID == data.requestedToID
+        && data.lastCollaborationTargetName == data.requestedToName;
+    }
+
+    function validTaskClaimMarker(before, after, householdID) {
+      return validCollaborationMarkerBase(after, householdID)
+        && after.lastCollaborationAction in ['taskClaimed', 'taskAccepted']
+        && after.lastCollaborationRequestID == before.assignmentRequestID
+        && after.lastCollaborationTargetID == before.requestedByID
+        && after.lastCollaborationTargetName == before.requestedByName
+        && (
+          after.lastCollaborationAction == 'taskClaimed'
+          || (
+            before.assignmentMode == 'direct'
+            && before.requestedToID == request.auth.uid
+          )
+        );
+    }
+
+    function validTaskRequestClosedMarker(before, after, householdID) {
+      return validCollaborationMarkerBase(after, householdID)
+        && after.lastCollaborationRequestID == before.assignmentRequestID
+        && (
+          (
+            after.lastCollaborationAction == 'taskDeclined'
+            && before.assignmentMode == 'direct'
+            && before.requestedToID == request.auth.uid
+            && after.lastCollaborationTargetID == before.requestedByID
+            && after.lastCollaborationTargetName == before.requestedByName
+          ) || (
+            after.lastCollaborationAction == 'taskCancelled'
+            && before.requestedByID == request.auth.uid
+            && after.lastCollaborationTargetID == before.requestedToID
+            && after.lastCollaborationTargetName == before.requestedToName
+          )
+        );
+    }
+
+    function validTaskCompletedMarker(data, householdID) {
+      return validCollaborationMarkerBase(data, householdID)
+        && data.lastCollaborationAction == 'taskCompleted'
+        && data.lastCollaborationTargetID == null
+        && data.lastCollaborationRequestID == null;
+    }
+
+    function collaborationEventPath(householdID, eventID) {
+      return /databases/$(database)/documents/households/$(householdID)/collaborationEvents/$(eventID);
+    }
+
+    function taskResponsibilityStatePath(householdID, taskID) {
+      return /databases/$(database)/documents/households/$(householdID)/taskResponsibilityState/$(taskID);
+    }
+
+    function membershipRevocationPath(householdID, memberID) {
+      return /databases/$(database)/documents/households/$(householdID)/membershipRevocations/$(memberID);
+    }
+
+    function validCollaborationReadCursor(data, householdID) {
+      return data.keys().hasOnly([
+          'schemaVersion', 'occurredAt', 'eventID', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion', 'occurredAt', 'eventID', 'updatedAt'
+        ])
+        && data.schemaVersion == 1
+        && data.occurredAt is timestamp
+        && data.eventID is string
+        && data.eventID.matches('^[a-f0-9]{64}$')
+        && data.updatedAt == request.time
+        && exists(collaborationEventPath(householdID, data.eventID))
+        && get(
+          collaborationEventPath(householdID, data.eventID)
+        ).data.occurredAt == data.occurredAt;
+    }
+
+    function collaborationReadCursorDoesNotRegress(before, after) {
+      return after.occurredAt > before.occurredAt
+        || (
+          after.occurredAt == before.occurredAt
+          && after.eventID >= before.eventID
+        );
+    }
+
+    function validTaskRequestStart(before, after, householdID) {
+      return requestChangedOnly()
+        && before.status == 'unclaimed'
+        && after.status == 'unclaimed'
+        && noRequest(before)
+        && validNewRequest(after, householdID)
+        && after.requestedByID == request.auth.uid
+        && after.assignmentRequestedAt == request.time
+        && noAssignee(after)
+        && noCompletion(after)
+        && (
+          !collaborationMarkerChanged()
+          || validTaskRequestMarker(after, householdID)
+        );
+    }
+
+    function validTaskClaimTransition(before, after, householdID) {
+      return claimChangedOnly()
+        && before.status == 'unclaimed'
+        && after.status == 'claimed'
+        && noRequest(after)
+        && assignedToCurrentMember(after, householdID)
+        && noCompletion(after)
+        && (
+          noRequest(before)
+          || before.requestedToID == request.auth.uid
+          || before.assignmentMode == 'open'
+          || before.requestedByID == request.auth.uid
+        )
+        && (
+          !collaborationMarkerChanged()
+          || validTaskClaimMarker(before, after, householdID)
+        );
+    }
+
+    function validTaskRequestClose(before, after, householdID) {
+      return requestChangedOnly()
+        && before.status == 'unclaimed'
+        && after.status == 'unclaimed'
+        && requestShapeIsValid(before)
+        && noRequest(after)
+        && noAssignee(after)
+        && noCompletion(after)
+        && (
+          before.requestedToID == request.auth.uid
+          || before.requestedByID == request.auth.uid
+        )
+        && (
+          !collaborationMarkerChanged()
+          || validTaskRequestClosedMarker(before, after, householdID)
+        );
+    }
+
+    function validTaskCompletionTransition(before, after, householdID) {
+      return after.diff(before).affectedKeys().hasOnly([
+          'status', 'completedByID', 'completedBy', 'completedAt', 'revision',
+          'lastCollaborationAction', 'lastCollaborationActorID',
+          'lastCollaborationActorName', 'lastCollaborationTargetID',
+          'lastCollaborationTargetName', 'lastCollaborationRequestID',
+          'lastCollaborationAt'
+        ])
+        && before.status == 'claimed'
+        && before.assigneeID == request.auth.uid
+        && after.status == 'completed'
+        && after.completedByID == request.auth.uid
+        && after.completedBy == member(householdID).data.displayName
+        && after.completedAt == request.time
+        && (
+          !collaborationMarkerChanged()
+          || validTaskCompletedMarker(after, householdID)
+        );
+    }
+
+    function validTaskTransition(before, after, householdID) {
+      return after.status == 'completed'
+        ? validTaskCompletionTransition(before, after, householdID)
+        : after.status == 'claimed'
+          ? validTaskClaimTransition(before, after, householdID)
+          : after.status == 'unclaimed'
+            ? (
+              noRequest(before)
+                ? validTaskRequestStart(before, after, householdID)
+                : validTaskRequestClose(before, after, householdID)
+            )
+            : false;
+    }
+
+    match /households/{householdID} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'id', 'name', 'petName', 'inviteCode', 'timeZoneIdentifier',
+          'ownerID', 'createdAt'
+        ])
+        && request.resource.data.id == householdID
+        && request.resource.data.ownerID == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.petName is string
+        && request.resource.data.petName.size() > 0
+        && request.resource.data.petName.size() <= 60
+        && validInviteCode(request.resource.data.inviteCode)
+        && validTimeZoneIdentifier(request.resource.data.timeZoneIdentifier)
+        && request.resource.data.createdAt == request.time
+        && getAfter(
+          /databases/$(database)/documents/households/$(householdID)/members/$(request.auth.uid)
+        ).data.inviteCode == request.resource.data.inviteCode
+        && getAfter(
+          /databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode)
+        ).data.householdID == householdID
+        && getAfter(
+          /databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode)
+        ).data.createdBy == request.auth.uid
+        && getAfter(
+          /databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode)
+        ).data.active == true;
+      allow read: if isMember(householdID);
+      allow update: if isMember(householdID)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'petName', 'updatedAt'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.petName is string
+        && request.resource.data.petName.size() > 0
+        && request.resource.data.petName.size() <= 60
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+
+      match /members/{memberID} {
+        allow get: if signedIn()
+          && (memberID == request.auth.uid || isMember(householdID));
+        allow list: if isMember(householdID);
+        allow create: if signedIn()
+          && memberID == request.auth.uid
+          && !exists(membershipRevocationPath(householdID, memberID))
+          && request.resource.data.keys().hasOnly([
+            'id', 'displayName', 'inviteCode', 'joinedAt'
+          ])
+          && request.resource.data.id == request.auth.uid
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 50
+          && readableLegacyInviteCode(request.resource.data.inviteCode)
+          && request.resource.data.joinedAt == request.time
+          && (
+            (
+              getAfter(/databases/$(database)/documents/households/$(householdID)).data.ownerID == request.auth.uid
+              && getAfter(/databases/$(database)/documents/households/$(householdID)).data.inviteCode == request.resource.data.inviteCode
+              && getAfter(/databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode)).data.householdID == householdID
+              && getAfter(/databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode)).data.createdBy == request.auth.uid
+            )
+            || (
+              exists(/databases/$(database)/documents/households/$(householdID))
+              &&
+              get(/databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode)).data.householdID == householdID
+              && get(/databases/$(database)/documents/households/$(householdID)).data.inviteCode == request.resource.data.inviteCode
+              && get(/databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode)).data.get('active', true) == true
+            )
+          );
+        allow update: if signedIn()
+          && memberID == request.auth.uid
+          && isMember(householdID)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'displayName', 'updatedAt'
+          ])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 50
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+
+        match /updateState/{stateID} {
+          allow get: if stateID == 'collaboration'
+            && signedIn()
+            && memberID == request.auth.uid
+            && isMember(householdID);
+          allow list: if false;
+          allow create: if stateID == 'collaboration'
+            && signedIn()
+            && memberID == request.auth.uid
+            && isMember(householdID)
+            && validCollaborationReadCursor(
+              request.resource.data,
+              householdID
+            );
+          allow update: if stateID == 'collaboration'
+            && signedIn()
+            && memberID == request.auth.uid
+            && isMember(householdID)
+            && validCollaborationReadCursor(
+              request.resource.data,
+              householdID
+            )
+            && collaborationReadCursorDoesNotRegress(
+              resource.data,
+              request.resource.data
+            );
+          allow delete: if false;
+        }
+      }
+
+      match /routines/{routineID} {
+        allow read: if isMember(householdID);
+        allow create: if isMember(householdID)
+          && request.resource.data.keys().hasOnly([
+            'id', 'title', 'category', 'priority', 'hour', 'minute',
+            'frequency', 'weekdays', 'startDate', 'timeZoneIdentifier', 'createdByID', 'createdByName',
+            'petID', 'petName', 'isActive', 'createdAt'
+          ])
+          && request.resource.data.id == routineID
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120
+          && request.resource.data.category in [
+            'feeding', 'walking', 'medication', 'grooming', 'other'
+          ]
+          && request.resource.data.priority in ['normal', 'urgent']
+          && request.resource.data.frequency in ['daily', 'selectedDays']
+          && request.resource.data.weekdays is list
+          && request.resource.data.weekdays.size() > 0
+          && request.resource.data.weekdays.size() <= 7
+          && request.resource.data.weekdays.toSet().size() == request.resource.data.weekdays.size()
+          && request.resource.data.weekdays.toSet().hasOnly([1, 2, 3, 4, 5, 6, 7])
+          && request.resource.data.hour is int
+          && request.resource.data.hour >= 0
+          && request.resource.data.hour < 24
+          && request.resource.data.minute is int
+          && request.resource.data.minute >= 0
+          && request.resource.data.minute < 60
+          && request.resource.data.startDate is timestamp
+          && validTimeZoneIdentifier(request.resource.data.timeZoneIdentifier)
+          && request.resource.data.createdByID == request.auth.uid
+          && request.resource.data.createdByName is string
+          && request.resource.data.createdByName.size() > 0
+          && request.resource.data.createdByName.size() <= 50
+          && request.resource.data.createdByName == member(householdID).data.displayName
+          && validNewPetReference(request.resource.data, householdID)
+          && request.resource.data.isActive == true
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+
+      match /tasks/{taskID} {
+        allow read: if isMember(householdID);
+
+        allow create: if isMember(householdID)
+          && validTaskBase(request.resource.data, taskID)
+          && noCompletion(request.resource.data)
+          && (
+            (
+              request.resource.data.kind == 'oneOff'
+              && request.resource.data.routineID == null
+              && request.resource.data.status == 'unclaimed'
+              && request.resource.data.createdByID == request.auth.uid
+              && request.resource.data.createdBy == member(householdID).data.displayName
+              && request.resource.data.createdAt == request.time
+              && request.resource.data.revision == 0
+              && noRequest(request.resource.data)
+              && noAssignee(request.resource.data)
+              && validNewPetReference(request.resource.data, householdID)
+              && (
+                !request.resource.data.keys().hasAny(['lastCollaborationAction'])
+                || validTaskCreatedMarker(request.resource.data, householdID)
+              )
+            )
+          );
+
+        allow update: if isMember(householdID)
+          && resource.data.id == taskID
+          && !exists(taskResponsibilityStatePath(householdID, taskID))
+          && petReferenceIsUnchanged()
+          && request.resource.data.revision is int
+          && revisionAdvanced()
+          && validTaskTransition(
+            resource.data,
+            request.resource.data,
+            householdID
+          );
+        allow delete: if false;
+      }
+
+      match /collaborationEvents/{eventID} {
+        allow read: if isMember(householdID);
+        allow create, update, delete: if false;
+      }
+
+      match /taskResponsibilityTransfers/{transferID} {
+        allow read: if isMember(householdID);
+        allow create, update, delete: if false;
+      }
+
+      match /taskResponsibilityState/{taskID} {
+        allow read: if isMember(householdID);
+        allow create, update, delete: if false;
+      }
+
+      match /taskResponsibilityReceipts/{receiptID} {
+        allow read, write: if false;
+      }
+
+      match /pets/{petID} {
+        allow read: if isMember(householdID);
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly([
+            'id', 'name', 'species', 'isArchived', 'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.id == petID
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 60
+          && (
+            request.resource.data.species == null
+            || request.resource.data.species in ['dog', 'cat', 'rabbit', 'other']
+          )
+          && request.resource.data.isArchived == false
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time
+          && (
+            isMember(householdID)
+            || (
+              petID == 'legacy-primary'
+              && getAfter(
+                /databases/$(database)/documents/households/$(householdID)
+              ).data.ownerID == request.auth.uid
+              && request.resource.data.name == getAfter(
+                /databases/$(database)/documents/households/$(householdID)
+              ).data.petName
+            )
+          );
+        allow update: if isMember(householdID)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'updatedAt'
+          ])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 60
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+
+      match /medications/{medicationID} {
+        allow read: if isMember(householdID);
+        allow write: if false;
+
+        match /scheduleVersions/{versionID} {
+          allow read: if isMember(householdID);
+          allow write: if false;
+        }
+      }
+
+      match /healthRecords/{recordID} {
+        allow read: if isMember(householdID);
+        allow write: if false;
+      }
+
+      match /healthMutationReceipts/{receiptID} {
+        allow read, write: if false;
+      }
+
+      match /handoff/{handoffID} {
+        allow read: if handoffID in ['current', 'sessionState']
+          && isMember(householdID);
+        allow create: if handoffID == 'current'
+          && isMember(householdID)
+          && validHandoff(request.resource.data, householdID)
+          && request.resource.data.revision == 1;
+        allow update: if handoffID == 'current'
+          && isMember(householdID)
+          && validHandoff(request.resource.data, householdID)
+          && request.resource.data.revision == resource.data.revision + 1;
+        allow delete: if false;
+      }
+
+      match /handoffVersions/{versionID} {
+        allow read: if isMember(householdID);
+        allow create, update, delete: if false;
+      }
+
+      match /handoffSessions/{sessionID} {
+        allow read: if isMember(householdID);
+        allow create, update, delete: if false;
+      }
+
+      match /handoffSessionReceipts/{receiptID} {
+        allow read, write: if false;
+      }
+
+      match /membershipMutationReceipts/{receiptID} {
+        allow read, write: if false;
+      }
+
+      match /membershipRevocations/{memberID} {
+        allow read, write: if false;
+
+        match /notificationClaims/{claimID} {
+          allow read, write: if false;
+        }
+      }
+
+      match /medicationOccurrences/{occurrenceID} {
+        allow read: if isMember(householdID);
+        allow write: if false;
+      }
+
+      match /medicationMutationReceipts/{receiptID} {
+        allow read, write: if false;
+      }
+
+      match /medicationReminderDeliveries/{deliveryID} {
+        allow read, write: if false;
+      }
+
+      match /notificationEndpointBindings/{bindingID} {
+        allow read, write: if false;
+      }
+    }
+
+    match /users/{userID}/notificationTokens/{tokenID} {
+      allow read: if signedIn() && userID == request.auth.uid;
+      allow create: if signedIn()
+        && userID == request.auth.uid
+        && canonicalNotificationID(tokenID)
+        && request.resource.data.keys().hasOnly([
+          'token', 'householdID', 'platform', 'enabled', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.token is string
+        && request.resource.data.token.size() > 0
+        && request.resource.data.token.size() <= 4096
+        && request.resource.data.householdID is string
+        && isMember(request.resource.data.householdID)
+        && request.resource.data.platform in ['ios', 'android']
+        && request.resource.data.enabled is bool
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if signedIn()
+        && userID == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'token', 'householdID', 'platform', 'enabled', 'updatedAt'
+        ])
+        && request.resource.data.token is string
+        && request.resource.data.token.size() > 0
+        && request.resource.data.token.size() <= 4096
+        && request.resource.data.householdID is string
+        && isMember(request.resource.data.householdID)
+        && request.resource.data.platform in ['ios', 'android']
+        && request.resource.data.enabled is bool
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if signedIn() && userID == request.auth.uid;
+    }
+
+    match /users/{userID}/householdNotificationPreferences/{householdID} {
+      allow get: if resource.data.uid == userID
+        && resource.data.householdID == householdID
+        && ownsCurrentNotificationEpoch(
+          userID,
+          householdID,
+          resource.data.memberJoinedAtSnapshot
+        );
+      allow list, create, update, delete: if false;
+    }
+
+    match /users/{userID}/notificationPreferenceMutationReceipts/{receiptID} {
+      allow read, write: if false;
+    }
+
+    match /users/{userID}/notificationInbox/{intentID} {
+      allow get: if validNotificationInboxRead(userID, intentID, resource.data);
+      allow list: if request.query.limit != null
+        && request.query.limit <= 21
+        && ownsPrivateNotificationScope(userID);
+      allow create, update, delete: if false;
+    }
+
+    match /users/{userID}/notificationInboxState/{householdID} {
+      allow get: if resource.data.householdID == householdID
+        && ownsCurrentNotificationEpoch(
+          userID,
+          householdID,
+          resource.data.recipientJoinedAtSnapshot
+        );
+      allow list: if false;
+      allow create: if validNotificationReadCursor(
+        userID,
+        householdID,
+        request.resource.data
+      );
+      allow update: if validNotificationReadCursor(
+          userID,
+          householdID,
+          request.resource.data
+        )
+        && request.resource.data.createdAt is timestamp
+        && resource.data.createdAt is timestamp
+        && notificationReadCursorDoesNotRegress(
+          resource.data,
+          request.resource.data
+        );
+      allow delete: if false;
+    }
+
+    match /users/{userID}/notificationDigests/{digestID} {
+      allow read, write: if false;
+    }
+
+    match /users/{userID}/notificationDeliveryManifests/{intentID} {
+      allow read, write: if false;
+    }
+
+    match /users/{userID}/notificationDeliveries/{deliveryID} {
+      allow get: if validNotificationDeliveryRead(
+        userID,
+        deliveryID,
+        resource.data
+      );
+      allow list: if request.query.limit != null
+        && request.query.limit <= 21
+        && ownsPrivateNotificationScope(userID);
+      allow create, update, delete: if false;
+    }
+
+    match /systemConfig/{configID} {
+      allow read, write: if false;
+    }
+
+    match /inviteCodes/{inviteCode} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'householdID', 'createdBy', 'createdAt', 'active'
+        ])
+        && request.resource.data.createdBy == request.auth.uid
+        && validInviteCode(inviteCode)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.active == true
+        && getAfter(
+          /databases/$(database)/documents/households/$(request.resource.data.householdID)
+        ).data.ownerID == request.auth.uid
+        && getAfter(
+          /databases/$(database)/documents/households/$(request.resource.data.householdID)
+        ).data.inviteCode == inviteCode
+        && getAfter(
+          /databases/$(database)/documents/households/$(request.resource.data.householdID)/members/$(request.auth.uid)
+        ).data.inviteCode == inviteCode;
+      allow update, delete: if false;
+    }
+  }
+}

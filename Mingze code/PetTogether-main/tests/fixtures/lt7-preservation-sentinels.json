@@ -1,0 +1,376 @@
+{
+  "schemaVersion": 1,
+  "environment": "emulator",
+  "projectID": "demo-copaw",
+  "supportDocuments": [
+    {
+      "path": "households/synthetic-home/members/synthetic-owner",
+      "data": {
+        "id": "synthetic-owner",
+        "displayName": "Synthetic owner",
+        "inviteCode": "SYN234",
+        "joinedAt": { "__type": "timestamp", "value": "2026-08-17T00:00:00.000Z" },
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:05:00.000Z" }
+      }
+    }
+  ],
+  "sentinels": [
+    {
+      "type": "household",
+      "path": "households/synthetic-home",
+      "data": {
+        "id": "synthetic-home", "name": "Synthetic household",
+        "petName": "Synthetic pet", "inviteCode": "SYN234",
+        "timeZoneIdentifier": "Asia/Tokyo", "ownerID": "synthetic-owner",
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:00:00.000Z" },
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:05:00.000Z" }
+      }
+    },
+    {
+      "type": "member",
+      "path": "households/synthetic-home/members/synthetic-member",
+      "data": {
+        "id": "synthetic-member", "displayName": "Synthetic caregiver",
+        "inviteCode": "SYN234",
+        "joinedAt": { "__type": "timestamp", "value": "2026-08-17T00:00:00.000Z" },
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:05:00.000Z" }
+      }
+    },
+    {
+      "type": "invite", "path": "inviteCodes/SYN234",
+      "data": {
+        "householdID": "synthetic-home", "createdBy": "synthetic-owner",
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:00:00.000Z" },
+        "active": true
+      }
+    },
+    {
+      "type": "pet", "path": "households/synthetic-home/pets/synthetic-pet",
+      "data": {
+        "id": "synthetic-pet", "name": "Synthetic pet", "species": "cat",
+        "isArchived": false,
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:00:00.000Z" },
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:05:00.000Z" }
+      }
+    },
+    {
+      "type": "task", "path": "households/synthetic-home/tasks/synthetic-task",
+      "data": {
+        "id": "synthetic-task", "title": "Synthetic care task", "category": "other",
+        "dueTime": { "__type": "timestamp", "value": "2026-08-17T02:00:00.000Z" },
+        "kind": "oneOff", "priority": "normal", "routineID": null,
+        "petID": "synthetic-pet", "petName": "Synthetic pet", "status": "claimed",
+        "assignmentRequestID": null, "assignmentMode": null,
+        "requestedByID": null, "requestedByName": null,
+        "requestedToID": null, "requestedToName": null, "assignmentRequestedAt": null,
+        "assigneeID": "synthetic-owner", "assigneeName": "Synthetic owner",
+        "claimedAt": { "__type": "timestamp", "value": "2026-08-17T00:10:00.000Z" },
+        "createdByID": "synthetic-owner", "createdBy": "Synthetic owner",
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:05:00.000Z" },
+        "completedByID": null, "completedBy": null, "completedAt": null,
+        "revision": 4
+      }
+    },
+    {
+      "type": "taskCompleted",
+      "path": "households/synthetic-home/tasks/synthetic-completed-task",
+      "data": {
+        "id": "synthetic-completed-task",
+        "title": "Synthetic completed care task",
+        "category": "feeding",
+        "dueTime": { "__type": "timestamp", "value": "2026-08-16T22:00:00.000Z" },
+        "kind": "oneOff",
+        "priority": "normal",
+        "routineID": null,
+        "petID": "synthetic-pet",
+        "petName": "Synthetic pet",
+        "status": "completed",
+        "assignmentRequestID": null,
+        "assignmentMode": null,
+        "requestedByID": null,
+        "requestedByName": null,
+        "requestedToID": null,
+        "requestedToName": null,
+        "assignmentRequestedAt": null,
+        "assigneeID": "synthetic-member",
+        "assigneeName": "Synthetic caregiver",
+        "claimedAt": { "__type": "timestamp", "value": "2026-08-16T21:40:00.000Z" },
+        "createdByID": "synthetic-owner",
+        "createdBy": "Synthetic owner",
+        "createdAt": { "__type": "timestamp", "value": "2026-08-16T21:30:00.000Z" },
+        "completedByID": "synthetic-member",
+        "completedBy": "Synthetic caregiver",
+        "completedAt": { "__type": "timestamp", "value": "2026-08-16T22:05:00.000Z" },
+        "revision": 3
+      }
+    },
+    {
+      "type": "routine", "path": "households/synthetic-home/routines/synthetic-routine",
+      "data": {
+        "id": "synthetic-routine", "title": "Synthetic routine",
+        "category": "walking", "priority": "normal", "hour": 9, "minute": 30,
+        "frequency": "selectedDays", "weekdays": [2, 4, 6],
+        "startDate": { "__type": "timestamp", "value": "2026-08-17T00:00:00.000Z" },
+        "timeZoneIdentifier": "Asia/Tokyo", "createdByID": "synthetic-owner",
+        "createdByName": "Synthetic owner", "petID": "synthetic-pet",
+        "petName": "Synthetic pet", "isActive": true,
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:05:00.000Z" }
+      }
+    },
+    {
+      "type": "medicationPlan",
+      "path": "households/synthetic-home/medications/synthetic-medication",
+      "data": {
+        "schemaVersion": 1, "id": "synthetic-medication", "petID": "synthetic-pet",
+        "displayName": "Synthetic medication", "purpose": null,
+        "possibleSideEffects": null, "isActive": true,
+        "currentScheduleVersion": 1, "currentScheduleVersionID": "v000001",
+        "revision": 0,
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:05:00.000Z" },
+        "createdByID": "synthetic-owner", "createdByName": "Synthetic owner",
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:05:00.000Z" },
+        "updatedByID": "synthetic-owner"
+      }
+    },
+    {
+      "type": "medicationVersion",
+      "path": "households/synthetic-home/medications/synthetic-medication/scheduleVersions/v000001",
+      "data": {
+        "schemaVersion": 1, "id": "v000001", "medicationID": "synthetic-medication",
+        "version": 1, "petID": "synthetic-pet", "petName": "Synthetic pet",
+        "medicationName": "Synthetic medication", "weekdays": [2],
+        "slots": [{ "slotID": "morning", "hour": 9, "minute": 0, "doseText": "Synthetic dose", "instructions": null }],
+        "timeZoneIdentifier": "Asia/Tokyo", "dstPolicy": "reject",
+        "effectiveFromLocalDate": "2026-08-01", "effectiveUntilLocalDate": null,
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:05:00.000Z" },
+        "createdByID": "synthetic-owner", "createdByName": "Synthetic owner",
+        "closedAt": null, "closedByID": null, "replacedByVersionID": null,
+        "revision": 0
+      }
+    },
+    {
+      "type": "medicationOccurrence",
+      "path": "households/synthetic-home/medicationOccurrences/synthetic-medication_v000001_2026-08-17_morning",
+      "data": {
+        "schemaVersion": 1,
+        "id": "synthetic-medication_v000001_2026-08-17_morning",
+        "medicationID": "synthetic-medication", "scheduleVersionID": "v000001",
+        "scheduleVersion": 1, "slotID": "morning", "localDate": "2026-08-17",
+        "dueAt": { "__type": "timestamp", "value": "2026-08-17T00:00:00.000Z" },
+        "timeZoneIdentifier": "Asia/Tokyo", "petID": "synthetic-pet",
+        "petName": "Synthetic pet", "medicationName": "Synthetic medication",
+        "doseText": "Synthetic dose", "instructions": null,
+        "responsibilityStatus": "claimed", "responsibleByID": "synthetic-owner",
+        "responsibleByName": "Synthetic owner",
+        "claimedAt": { "__type": "timestamp", "value": "2026-08-16T23:50:00.000Z" },
+        "outcomeStatus": "administered", "outcomeByID": "synthetic-owner",
+        "outcomeByName": "Synthetic owner",
+        "outcomeAt": { "__type": "timestamp", "value": "2026-08-17T00:02:00.000Z" },
+        "skippedReasonCode": null, "skippedReasonNote": null,
+        "materializedAt": { "__type": "timestamp", "value": "2026-08-16T23:45:00.000Z" },
+        "revision": 2
+      }
+    },
+    {
+      "type": "healthV1",
+      "path": "households/synthetic-home/healthRecords/legacy-health",
+      "data": {
+        "schemaVersion": 1, "petID": "synthetic-pet", "petName": "Synthetic pet",
+        "type": "waterIntake",
+        "recordedAt": { "__type": "timestamp", "value": "2026-08-17T00:20:00.000Z" },
+        "detail": "Synthetic legacy observation", "weightKilograms": null,
+        "waterMilliliters": 125.5, "waterLevel": null, "appetiteLevel": null,
+        "urinationLevel": null, "stoolStatus": null, "energyLevel": null,
+        "moodStatus": null, "createdByID": "synthetic-owner",
+        "createdByName": "Synthetic owner",
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:20:01.000Z" }
+      }
+    },
+    {
+      "type": "healthV2",
+      "path": "households/synthetic-home/healthRecords/canonical-health",
+      "data": {
+        "schemaVersion": 2, "petID": "synthetic-pet", "petName": "Synthetic pet",
+        "type": "dailyCheckIn",
+        "recordedAt": { "__type": "timestamp", "value": "2026-08-17T01:30:00.000Z" },
+        "recordedLocalDate": "2026-08-17", "recordedTimeZoneIdentifier": "Asia/Tokyo",
+        "detail": "Synthetic daily observation", "weightKilograms": null,
+        "waterMilliliters": 240, "waterMeasurementBasis": "localDayToDate",
+        "waterLevel": "usual", "appetiteLevel": "usual",
+        "urinationLevel": "usual", "stoolStatus": "usual",
+        "energyLevel": "usual", "moodStatus": "usual",
+        "createdByID": "synthetic-member", "createdByName": "Synthetic caregiver",
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T01:30:01.000Z" }
+      }
+    },
+    {
+      "type": "handoffTemplate", "path": "households/synthetic-home/handoff/current",
+      "data": {
+        "schemaVersion": 1, "careInstructions": "Synthetic care instructions",
+        "emergencyContactName": "Synthetic contact",
+        "emergencyContactPhone": "+81-00-0000-0000",
+        "veterinaryHospitalName": "Synthetic clinic",
+        "veterinaryHospitalPhone": "+81-00-0000-0001", "revision": 2,
+        "updatedByID": "synthetic-owner", "updatedByName": "Synthetic owner",
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:30:00.000Z" }
+      }
+    },
+    {
+      "type": "handoffVersion", "path": "households/synthetic-home/handoffVersions/v000002",
+      "data": {
+        "schemaVersion": 1, "id": "v000002", "sourceHandoffRevision": 2,
+        "careInstructions": "Synthetic care instructions",
+        "emergencyContactName": "Synthetic contact",
+        "emergencyContactPhone": "+81-00-0000-0000",
+        "veterinaryHospitalName": "Synthetic clinic",
+        "veterinaryHospitalPhone": "+81-00-0000-0001",
+        "updatedByID": "synthetic-owner", "updatedByName": "Synthetic owner",
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:30:00.000Z" },
+        "materializedAt": { "__type": "timestamp", "value": "2026-08-17T00:31:00.000Z" }
+      }
+    },
+    {
+      "type": "handoffSession", "path": "households/synthetic-home/handoffSessions/session-1",
+      "data": {
+        "schemaVersion": 1, "id": "session-1", "versionID": "v000002",
+        "handoffRevisionSnapshot": 2, "creatorID": "synthetic-owner",
+        "creatorName": "Synthetic owner", "recipientID": "synthetic-member",
+        "recipientName": "Synthetic caregiver", "timeZoneIdentifierSnapshot": "Asia/Tokyo",
+        "plannedStartAt": { "__type": "timestamp", "value": "2026-08-18T00:00:00.000Z" },
+        "plannedEndAt": { "__type": "timestamp", "value": "2026-08-19T00:00:00.000Z" },
+        "status": "closed",
+        "offeredAt": { "__type": "timestamp", "value": "2026-08-17T00:31:00.000Z" },
+        "acceptedByID": "synthetic-member", "acceptedByName": "Synthetic caregiver",
+        "acceptedAt": { "__type": "timestamp", "value": "2026-08-17T00:32:00.000Z" },
+        "declinedByID": null, "declinedByName": null, "declinedAt": null,
+        "cancelledByID": null, "cancelledByName": null, "cancelledAt": null,
+        "closedByID": "synthetic-owner", "closedByName": "Synthetic owner",
+        "closedAt": { "__type": "timestamp", "value": "2026-08-19T00:01:00.000Z" },
+        "resolutionReason": null, "revision": 3
+      }
+    },
+    {
+      "type": "responsibilityTransfer",
+      "path": "households/synthetic-home/taskResponsibilityTransfers/transfer-1",
+      "data": {
+        "schemaVersion": 1, "id": "transfer-1", "taskID": "synthetic-task",
+        "kind": "reassign", "status": "pending",
+        "requestedByID": "synthetic-owner", "requestedByName": "Synthetic owner",
+        "consentByID": "synthetic-member", "consentByName": "Synthetic caregiver",
+        "responsibilityFromID": "synthetic-owner",
+        "responsibilityFromName": "Synthetic owner",
+        "responsibilityToID": "synthetic-member",
+        "responsibilityToName": "Synthetic caregiver", "taskRevisionAtProposal": 4,
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:15:00.000Z" },
+        "resolvedByID": null, "resolvedByName": null, "resolvedAt": null,
+        "resultingTaskRevision": null, "revision": 1
+      }
+    },
+    {
+      "type": "responsibilityPointer",
+      "path": "households/synthetic-home/taskResponsibilityState/synthetic-task",
+      "data": {
+        "schemaVersion": 1, "taskID": "synthetic-task", "transferID": "transfer-1",
+        "taskRevisionAtProposal": 4,
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:15:00.000Z" }
+      }
+    },
+    {
+      "type": "collaborationLedger",
+      "path": "households/synthetic-home/collaborationEvents/ea292068b0763a623317a8a440c11313773dec0a3de7a34de0f30f44fd2355dd",
+      "data": {
+        "schemaVersion": 2, "sourceType": "taskResponsibilityTransfer",
+        "sourceID": "transfer-1", "sourceRevision": 1,
+        "action": "taskReassignRequested", "actorID": "synthetic-owner",
+        "actorName": "Synthetic owner", "responsibilityFromID": "synthetic-owner",
+        "responsibilityFromName": "Synthetic owner", "responsibilityToID": "synthetic-member",
+        "responsibilityToName": "Synthetic caregiver", "handoffCreatorID": null,
+        "handoffCreatorName": null, "handoffRecipientID": null,
+        "handoffRecipientName": null, "requestID": "transfer-1",
+        "petID": "synthetic-pet", "petName": "Synthetic pet",
+        "taskTitle": "Synthetic care task", "taskCategory": "other",
+        "taskPriority": "normal",
+        "taskDueTime": { "__type": "timestamp", "value": "2026-08-17T02:00:00.000Z" },
+        "stateAfter": "claimed", "handoffStatus": null,
+        "occurredAt": { "__type": "timestamp", "value": "2026-08-17T00:15:00.000Z" },
+        "recordedAt": { "__type": "timestamp", "value": "2026-08-17T00:15:01.000Z" }
+      }
+    },
+    {
+      "type": "collaborationReadCursor",
+      "path": "households/synthetic-home/members/synthetic-member/updateState/collaboration",
+      "data": {
+        "schemaVersion": 1,
+        "occurredAt": { "__type": "timestamp", "value": "2026-08-17T00:15:00.000Z" },
+        "eventID": "ea292068b0763a623317a8a440c11313773dec0a3de7a34de0f30f44fd2355dd",
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:16:00.000Z" }
+      }
+    },
+    {
+      "type": "notificationPreference",
+      "path": "users/synthetic-member/householdNotificationPreferences/synthetic-home",
+      "data": {
+        "schemaVersion": 1, "uid": "synthetic-member", "householdID": "synthetic-home",
+        "memberJoinedAtSnapshot": { "__type": "timestamp", "value": "2026-08-17T00:00:00.000Z" },
+        "medicationRemindersEnabled": true, "assignmentAlertsEnabled": true,
+        "urgentAlertsEnabled": false, "pushEnabled": true,
+        "backupForMemberIDs": [], "quietHoursEnabled": false,
+        "quietStartMinute": 1320, "quietEndMinute": 420,
+        "summaryEnabled": false, "summaryMinute": 1080,
+        "timeZoneIdentifierSnapshot": "Asia/Tokyo", "revision": 1,
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:17:00.000Z" },
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:17:00.000Z" }
+      }
+    },
+    {
+      "type": "notificationInbox",
+      "path": "users/synthetic-member/notificationInbox/6f80f936400aa9481ede315a112ea1bce67a042e0e77cdb796184a1c736b0ec9",
+      "data": {
+        "schemaVersion": 1,
+        "id": "6f80f936400aa9481ede315a112ea1bce67a042e0e77cdb796184a1c736b0ec9",
+        "householdID": "synthetic-home", "recipientID": "synthetic-member",
+        "recipientJoinedAtSnapshot": { "__type": "timestamp", "value": "2026-08-17T00:00:00.000Z" },
+        "category": "assignment", "level": "responsibilityProposal",
+        "routeReason": "directTarget", "sourceType": "taskResponsibilityTransfer",
+        "sourceID": "transfer-1", "sourcePath": "taskResponsibilityTransfers/transfer-1",
+        "sourceRevision": 1, "preferenceRevision": 1, "status": "active",
+        "availableAt": { "__type": "timestamp", "value": "2026-08-17T00:17:00.000Z" },
+        "expiresAt": { "__type": "timestamp", "value": "2026-08-18T00:17:00.000Z" },
+        "nextDispatchAt": { "__type": "timestamp", "value": "2026-08-17T00:17:00.000Z" },
+        "coalescingKey": null, "cancelReason": null, "cancelledAt": null,
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:17:00.000Z" },
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:17:00.000Z" }
+      }
+    },
+    {
+      "type": "notificationReadCursor",
+      "path": "users/synthetic-member/notificationInboxState/synthetic-home",
+      "data": {
+        "schemaVersion": 1, "householdID": "synthetic-home",
+        "recipientJoinedAtSnapshot": { "__type": "timestamp", "value": "2026-08-17T00:00:00.000Z" },
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:17:00.000Z" },
+        "intentID": "6f80f936400aa9481ede315a112ea1bce67a042e0e77cdb796184a1c736b0ec9",
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:18:00.000Z" }
+      }
+    },
+    {
+      "type": "notificationDelivery",
+      "path": "users/synthetic-member/notificationDeliveries/c42ccd34ecaaf87f436f549022bc22f4cf2c6c10d9c30d219b61ed89387b2e25",
+      "data": {
+        "schemaVersion": 2,
+        "id": "c42ccd34ecaaf87f436f549022bc22f4cf2c6c10d9c30d219b61ed89387b2e25",
+        "intentID": "6f80f936400aa9481ede315a112ea1bce67a042e0e77cdb796184a1c736b0ec9",
+        "householdID": "synthetic-home", "recipientID": "synthetic-member",
+        "recipientJoinedAtSnapshot": { "__type": "timestamp", "value": "2026-08-17T00:00:00.000Z" },
+        "installationHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "status": "queued", "attemptCount": 0,
+        "nextAttemptAt": { "__type": "timestamp", "value": "2026-08-17T00:17:00.000Z" },
+        "leaseID": null, "leaseExpiresAt": null, "providerRequestStartedAt": null,
+        "providerAcceptedAt": null, "providerUnknownAt": null,
+        "terminalAt": null, "safeErrorCode": null,
+        "createdAt": { "__type": "timestamp", "value": "2026-08-17T00:17:00.000Z" },
+        "updatedAt": { "__type": "timestamp", "value": "2026-08-17T00:17:00.000Z" }
+      }
+    }
+  ]
+}

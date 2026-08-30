@@ -1,0 +1,8 @@
+#include "Debug.xcconfig"
+
+// Deliberately no FLUTTER_TARGET override. Pinning the entry point here also
+// overrides the target that `flutter test` generates, so the local build would
+// launch the real app instead of the integration test and every coordinated
+// phase would hang waiting for a handshake that never arrives. Run the local
+// entry point explicitly instead:
+//   flutter run --flavor local --target lib/main_emulator.dart

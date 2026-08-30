@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "exports": [
+    "archivePet",
+    "createDailyHealthCheckIn",
+    "createHealthRecord",
+    "createMedicationPlan",
+    "dispatchNotificationV2",
+    "expireNotificationInbox",
+    "generateMedicationNotificationIntentsV2",
+    "leaveHousehold",
+    "mutateHandoffSession",
+    "mutateMedicationOccurrence",
+    "mutateRoutineOccurrence",
+    "mutateTaskResponsibility",
+    "onHandoffNotificationSourceWritten",
+    "onMedicationOccurrenceNotificationSourceWritten",
+    "onTaskNotificationSourceWritten",
+    "onTransferNotificationSourceWritten",
+    "recordTaskCollaborationEvent",
+    "recoverNotificationDigests",
+    "recoverNotificationManifests",
+    "replaceMedicationPlan",
+    "resetMalformedNotificationPreferences",
+    "resolveNotificationInboxRoute",
+    "setHouseholdNotificationPreferences",
+    "stopMedicationPlan"
+  ]
+}
