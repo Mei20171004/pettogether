@@ -884,7 +884,7 @@ class _PetCareCardState extends State<_PetCareCard> {
                           todayTasks.isEmpty
                               ? L10n.text(language, 'Nothing scheduled',
                                   '予定なし', '暂无安排', '예정 없음')
-                              : '$completed.length / ${todayTasks.length}',
+                              : '${completed.length} / ${todayTasks.length}',
                           style: const TextStyle(
                               fontSize: 12, color: PawColors.muted),
                         ),

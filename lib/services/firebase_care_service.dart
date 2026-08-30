@@ -37,13 +37,20 @@ class FirebaseCareService implements CareService {
     final user = await _ensureAuthenticated();
     final householdID = await _savedHouseholdID();
     if (householdID != null) {
-      final householdDoc = await _householdRef(householdID).get();
-      final memberDoc = await _memberRef(householdID, user.uid).get();
-      if (householdDoc.exists && memberDoc.exists) {
-        return CareSession(
-          household: _householdFrom(householdDoc),
-          caregiver: _caregiverFrom(memberDoc),
-        );
+      // The saved id may belong to a previous account on this device. Reading
+      // it then throws permission-denied — treat that as a stale cache and
+      // fall through to the membership lookup instead of surfacing an error.
+      try {
+        final householdDoc = await _householdRef(householdID).get();
+        final memberDoc = await _memberRef(householdID, user.uid).get();
+        if (householdDoc.exists && memberDoc.exists) {
+          return CareSession(
+            household: _householdFrom(householdDoc),
+            caregiver: _caregiverFrom(memberDoc),
+          );
+        }
+      } on FirebaseException catch (error) {
+        if (error.code != 'permission-denied') rethrow;
       }
       await _clearSavedHouseholdID();
     }
@@ -737,7 +744,10 @@ class FirebaseCareService implements CareService {
       invitedBy: user.uid,
       status: InvitationStatus.active,
       createdAt: now,
-      expiresAt: now.add(const Duration(hours: 24)),
+      // Slightly under the rules' 24h ceiling: a client clock that runs a few
+      // seconds fast would otherwise make `expiresAt <= request.time + 24h`
+      // fail server-side and reject every invitation with permission-denied.
+      expiresAt: now.add(const Duration(hours: 23, minutes: 55)),
     );
     final payload = invitation.toJson();
     payload['createdAt'] = Timestamp.fromDate(invitation.createdAt);
@@ -884,7 +894,13 @@ class FirebaseCareService implements CareService {
         .collection('joinRequests')
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snap) => snap.docs.map(_joinRequestFrom).toList());
+        // Filter client-side: reviewed requests stay in Firestore as an audit
+        // trail, but only pending ones belong in the owner's approval list.
+        // (A `where` clause here would need a composite index.)
+        .map((snap) => snap.docs
+            .map(_joinRequestFrom)
+            .where((request) => request.status == JoinRequestStatus.pending)
+            .toList());
   }
 
   @override

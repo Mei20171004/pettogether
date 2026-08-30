@@ -1594,14 +1594,26 @@ class CareStore extends ChangeNotifier {
     if (_completingApprovedJoin) return;
     _completingApprovedJoin = true;
     try {
-      final session = await _service.restoreSession();
-      if (session != null && _household == null) {
-        _household = session.household;
-        _currentCaregiver = session.caregiver;
-        _observeDomain(session);
+      // The owner's approval transaction may not be visible to us the moment
+      // the request flips to approved, so retry briefly instead of stranding
+      // the joiner on the waiting screen with an error.
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          final session = await _service.restoreSession();
+          if (session != null && _household == null) {
+            _household = session.household;
+            _currentCaregiver = session.caregiver;
+            _observeDomain(session);
+          }
+          if (session != null || _household != null) return;
+        } catch (error) {
+          if (attempt == 2) {
+            _setError(error);
+            return;
+          }
+        }
+        await Future<void>.delayed(Duration(seconds: 1 + attempt));
       }
-    } catch (error) {
-      _setError(error);
     } finally {
       _completingApprovedJoin = false;
     }
