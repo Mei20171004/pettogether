@@ -7,7 +7,7 @@ import '../l10n/l10n.dart';
 import '../theme/app_theme.dart';
 
 /// Full-screen camera scanner that returns the raw invitation value (a
-/// `copaw://invite/<id>` deep link) via [Navigator.pop].
+/// `pettogether://invite/<id>` deep link) via [Navigator.pop].
 class InvitationScannerView extends StatefulWidget {
   const InvitationScannerView({super.key});
 
@@ -66,10 +66,10 @@ class _InvitationScannerViewState extends State<InvitationScannerView> {
             child: Text(
               L10n.text(
                 language,
-                'Point the camera at a copaw invitation QR code.',
-                'copaw の招待 QR コードにカメラを向けてください。',
-                '将相机对准 copaw 邀请二维码。',
-                'copaw 초대 QR 코드에 카메라를 맞추세요.',
+                'Point the camera at a pettogether invitation QR code.',
+                'pettogether の招待 QR コードにカメラを向けてください。',
+                '将相机对准 pettogether 邀请二维码。',
+                'pettogether 초대 QR 코드에 카메라를 맞추세요.',
               ),
               textAlign: TextAlign.center,
               style: const TextStyle(

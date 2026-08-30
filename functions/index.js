@@ -1,4 +1,4 @@
-// Cloud Functions for copaw (merged build).
+// Cloud Functions for pettogether (merged build).
 //
 // Adapted from the Kate/care-paw implementation onto the main app's Firestore
 // schema: task docs use `dueTime`/`routineID`/`assigneeID`+`assigneeName`/
@@ -165,6 +165,49 @@ exports.sendRoutineReminders = onSchedule(
   },
 );
 
+/// Nudges the household about vaccinations and dewormings coming due, a week
+/// ahead and again on the day.
+exports.sendHealthDueReminders = onSchedule(
+  {
+    schedule: "0 9 * * *",
+    timeZone: defaultTimeZone,
+    region,
+    maxInstances: 1,
+  },
+  async () => {
+    const records = await db.collectionGroup("healthRecords").get();
+    const now = new Date();
+
+    for (const recordDocument of records.docs) {
+      const record = recordDocument.data();
+      if (record.type !== "vaccination" && record.type !== "deworming") continue;
+      const dueAt = record.nextDueAt?.toDate ? record.nextDueAt.toDate() : null;
+      if (!dueAt) continue;
+
+      const days = Math.round((dueAt.getTime() - now.getTime()) / 86400000);
+      if (days !== 7 && days !== 0) continue;
+
+      const householdId = recordDocument.ref.parent.parent.id;
+      const eventId = `health-due-${recordDocument.id}-${days}`;
+      if (!(await claimNotificationEvent(householdId, eventId))) continue;
+
+      const subject = record.petNameSnapshot
+        ? `${record.petNameSnapshot}'s ${record.title || "next dose"}`
+        : record.title || "A vaccination";
+      await sendToHousehold({
+        householdId,
+        taskId: recordDocument.id,
+        type: "health_due",
+        title: days === 0 ? "Due today" : "Due next week",
+        body:
+          days === 0
+            ? `${subject} is due today.`
+            : `${subject} is due in a week.`,
+      });
+    }
+  },
+);
+
 function taskNotification(before, after) {
   if (!before && !after) return null;
   if (!before && after) {
@@ -187,10 +230,15 @@ function taskNotification(before, after) {
       };
     }
     if (after.status === "completed") {
+      // Telling everyone else a dose was given is what stops a second person
+      // giving it again, so medication gets its own wording.
+      const isMedication = after.category === "medication";
       return {
         type: "task_completed",
-        title: "Care task completed",
-        body: `${caregiverName(after.completedBy)} completed “${after.title || "a care task"}”.`,
+        title: isMedication ? "Medication given" : "Care task completed",
+        body: isMedication
+          ? `${caregiverName(after.completedBy)} gave “${after.title || "the medication"}”.`
+          : `${caregiverName(after.completedBy)} completed “${after.title || "a care task"}”.`,
         excludedIds: [caregiverId(after.completedByID)],
       };
     }
@@ -237,7 +285,7 @@ async function sendToHousehold({
       data: { householdId, taskId, type, title, body },
       android: {
         priority: "high",
-        notification: { channelId: "copaw_care" },
+        notification: { channelId: "pettogether_care" },
       },
       apns: { payload: { aps: { sound: "default" } } },
     });
@@ -318,7 +366,18 @@ function routineReminderDateKey(routine, timeZone, now) {
   }
   const startDateKey = routineStartDateKey(routine, timeZone);
   if (startDateKey && dateKey < startDateKey) return null;
+  // A finished course must not keep nagging. endDate is inclusive, matching
+  // routineRunsOn in lib/utils/care_calendar.dart.
+  const endDateKey = localDateKey(routine.endDate, timeZone);
+  if (endDateKey && dateKey > endDateKey) return null;
   return dateKey;
+}
+
+function localDateKey(value, timeZone) {
+  if (!value) return null;
+  const date = value.toDate ? value.toDate() : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return timeParts(timeZone, date).dateKey;
 }
 
 function routineStartDateKey(routine, timeZone) {
@@ -363,10 +422,16 @@ function addDays(dateKey, days) {
   return date.toISOString().slice(0, 10);
 }
 
+/// Weekday in the app's convention: 1 = Sunday through 7 = Saturday, matching
+/// `swiftWeekday` in lib/utils/care_calendar.dart and the `weekdays` arrays
+/// stored on routines and medication plans.
+///
+/// getUTCDay() is 0 = Sunday, so this is a straight +1 rather than the
+/// Monday-first shift it used to do — that mismatch made reminders for
+/// weekday-limited routines fire on the wrong day.
 function weekdayForDate(dateKey) {
   const [year, month, day] = dateKey.split("-").map(Number);
-  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  return weekday === 0 ? 7 : weekday;
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 1;
 }
 
 function caregiverId(value) {

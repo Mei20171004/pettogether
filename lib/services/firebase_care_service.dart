@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/health.dart';
 import '../models/models.dart';
 import '../utils/extensions.dart';
 import '../utils/id.dart';
@@ -15,12 +16,14 @@ import 'care_service.dart';
 /// same flattened assignment-request fields, so it interoperates with the
 /// original app and its security rules.
 class FirebaseCareService implements CareService {
-  static const _householdIDKey = 'copaw.activeHouseholdID';
+  static const _householdIDKey = 'pettogether.activeHouseholdID';
 
   StreamSubscription? _householdSub;
   StreamSubscription? _taskSub;
   StreamSubscription? _caregiverSub;
   StreamSubscription? _routineSub;
+  StreamSubscription? _medicationPlanSub;
+  StreamSubscription? _healthRecordSub;
 
   FirebaseFirestore get _db => FirebaseFirestore.instance;
 
@@ -34,13 +37,20 @@ class FirebaseCareService implements CareService {
     final user = await _ensureAuthenticated();
     final householdID = await _savedHouseholdID();
     if (householdID != null) {
-      final householdDoc = await _householdRef(householdID).get();
-      final memberDoc = await _memberRef(householdID, user.uid).get();
-      if (householdDoc.exists && memberDoc.exists) {
-        return CareSession(
-          household: _householdFrom(householdDoc),
-          caregiver: _caregiverFrom(memberDoc),
-        );
+      // The saved id may belong to a previous account on this device. Reading
+      // it then throws permission-denied — treat that as a stale cache and
+      // fall through to the membership lookup instead of surfacing an error.
+      try {
+        final householdDoc = await _householdRef(householdID).get();
+        final memberDoc = await _memberRef(householdID, user.uid).get();
+        if (householdDoc.exists && memberDoc.exists) {
+          return CareSession(
+            household: _householdFrom(householdDoc),
+            caregiver: _caregiverFrom(memberDoc),
+          );
+        }
+      } on FirebaseException catch (error) {
+        if (error.code != 'permission-denied') rethrow;
       }
       await _clearSavedHouseholdID();
     }
@@ -150,10 +160,21 @@ class FirebaseCareService implements CareService {
     _taskSub?.cancel();
     _taskSub = _householdRef(householdID)
         .collection('tasks')
-        .snapshots()
+        // Metadata matters for medication: a completion read from cache or
+        // still being written must not be presented as a confirmed dose.
+        .snapshots(includeMetadataChanges: true)
         .listen(
-          (snapshot) =>
-              onChange(snapshot.docs.map(_taskFrom).toList(growable: false)),
+          (snapshot) {
+            final confirmed = !snapshot.metadata.isFromCache &&
+                !snapshot.metadata.hasPendingWrites;
+            onChange(snapshot.docs
+                .map((doc) => _taskFrom(
+                      doc,
+                      isServerConfirmed:
+                          confirmed && !doc.metadata.hasPendingWrites,
+                    ))
+                .toList(growable: false));
+          },
           onError: (Object e) => onError(_map(e)),
         );
   }
@@ -208,6 +229,20 @@ class FirebaseCareService implements CareService {
     await _taskRef(householdID, task.id).set(
       _taskData(task, createdByID: user.uid, useServerCreatedAt: true),
     );
+  }
+
+  @override
+  Future<void> updateRoutine(CareRoutine routine, String householdID) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    await _routineRef(householdID, routine.id).set(_routineData(routine));
+  }
+
+  @override
+  Future<void> deleteRoutine(String routineID, String householdID) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    await _routineRef(householdID, routineID).delete();
   }
 
   @override
@@ -606,8 +641,10 @@ class FirebaseCareService implements CareService {
   Future<void> skipTaskOccurrence(
     CareTask task,
     String householdID,
-    Caregiver caregiver,
-  ) async {
+    Caregiver caregiver, {
+    MedicationSkipReason? reason,
+    String? note,
+  }) async {
     _ensureConfigured();
     final user = await _ensureAuthenticated();
     _validate(caregiver, user.uid);
@@ -623,6 +660,8 @@ class FirebaseCareService implements CareService {
           'status': CareTaskStatus.skipped.rawValue,
           'skippedBy': caregiver.displayName,
           'skippedAt': FieldValue.serverTimestamp(),
+          'skipReason': reason?.rawValue,
+          'skipNote': note,
           'revision': _revision(data) + 1,
         });
       } else {
@@ -632,6 +671,8 @@ class FirebaseCareService implements CareService {
         final materialized = task.copyWith(
           status: CareTaskStatus.skipped,
           clearAssignmentRequest: true,
+          skipReason: reason,
+          skipNote: note,
           revision: task.revision + 1,
         );
         final payload = _taskData(
@@ -668,7 +709,7 @@ class FirebaseCareService implements CareService {
         throw const CareServiceError(CareServiceErrorType.invalidTransition);
       }
       // Deleting the override lets the store regenerate the occurrence from
-      // its routine (unclaimed).
+      // its routine (unclaimed), which also clears any skip reason.
       tx.delete(ref);
     });
   }
@@ -703,7 +744,10 @@ class FirebaseCareService implements CareService {
       invitedBy: user.uid,
       status: InvitationStatus.active,
       createdAt: now,
-      expiresAt: now.add(const Duration(hours: 24)),
+      // Slightly under the rules' 24h ceiling: a client clock that runs a few
+      // seconds fast would otherwise make `expiresAt <= request.time + 24h`
+      // fail server-side and reject every invitation with permission-denied.
+      expiresAt: now.add(const Duration(hours: 23, minutes: 55)),
     );
     final payload = invitation.toJson();
     payload['createdAt'] = Timestamp.fromDate(invitation.createdAt);
@@ -850,7 +894,13 @@ class FirebaseCareService implements CareService {
         .collection('joinRequests')
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snap) => snap.docs.map(_joinRequestFrom).toList());
+        // Filter client-side: reviewed requests stay in Firestore as an audit
+        // trail, but only pending ones belong in the owner's approval list.
+        // (A `where` clause here would need a composite index.)
+        .map((snap) => snap.docs
+            .map(_joinRequestFrom)
+            .where((request) => request.status == JoinRequestStatus.pending)
+            .toList());
   }
 
   @override
@@ -1007,16 +1057,125 @@ class FirebaseCareService implements CareService {
     });
   }
 
+  // -------------------------------------------------------------------------
+  // Health records: medication courses, doses, and medical history
+  // -------------------------------------------------------------------------
+
+  @override
+  void observeMedicationPlans({
+    required String householdID,
+    required void Function(List<MedicationPlan>) onChange,
+    required void Function(Object error) onError,
+  }) {
+    _medicationPlanSub?.cancel();
+    _medicationPlanSub = _householdRef(householdID)
+        .collection('medicationPlans')
+        .snapshots()
+        .listen(
+          (snapshot) => onChange(
+              snapshot.docs.map(_medicationPlanFrom).toList(growable: false)),
+          onError: (Object e) => onError(_map(e)),
+        );
+  }
+
+  @override
+  void observeHealthRecords({
+    required String householdID,
+    required void Function(List<HealthRecord>) onChange,
+    required void Function(Object error) onError,
+  }) {
+    _healthRecordSub?.cancel();
+    _healthRecordSub = _householdRef(householdID)
+        .collection('healthRecords')
+        .snapshots()
+        .listen(
+          (snapshot) => onChange(
+              snapshot.docs.map(_healthRecordFrom).toList(growable: false)),
+          onError: (Object e) => onError(_map(e)),
+        );
+  }
+
+  @override
+  Future<void> saveMedicationPlan(
+    MedicationPlan plan,
+    String householdID,
+  ) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    if (!plan.isValid) {
+      throw const CareServiceError(CareServiceErrorType.invalidMedicationPlan);
+    }
+    final ref = _medicationPlanRef(householdID, plan.id);
+    final existing = await ref.get();
+    final data = _medicationPlanData(plan);
+    if (existing.exists) {
+      data['revision'] = _revision(existing.data()!) + 1;
+      await ref.update(data);
+    } else {
+      data['createdAt'] = FieldValue.serverTimestamp();
+      await ref.set(data);
+    }
+  }
+
+  @override
+  Future<void> deleteMedicationPlan(String planID, String householdID) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    await _medicationPlanRef(householdID, planID).delete();
+  }
+
+  @override
+  Future<void> saveHealthRecord(
+    HealthRecord record,
+    String householdID,
+  ) async {
+    _ensureConfigured();
+    final user = await _ensureAuthenticated();
+    if (!record.isValid) {
+      throw const CareServiceError(CareServiceErrorType.invalidHealthRecord);
+    }
+    if (record.attachments.length > HealthRecord.maxAttachments) {
+      throw const CareServiceError(
+          CareServiceErrorType.attachmentLimitReached);
+    }
+    final ref = _healthRecordRef(householdID, record.id);
+    final existing = await ref.get();
+    final data = _healthRecordData(record);
+    if (existing.exists) {
+      data['updatedAt'] = FieldValue.serverTimestamp();
+      data['updatedByID'] = user.uid;
+      data['revision'] = _revision(existing.data()!) + 1;
+      await ref.update(data);
+    } else {
+      data['createdAt'] = FieldValue.serverTimestamp();
+      await ref.set(data);
+    }
+  }
+
+  @override
+  Future<void> deleteHealthRecord(
+    String recordID,
+    String householdID,
+  ) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    await _healthRecordRef(householdID, recordID).delete();
+  }
+
   @override
   void stopObserving() {
     _householdSub?.cancel();
     _taskSub?.cancel();
     _caregiverSub?.cancel();
     _routineSub?.cancel();
+    _medicationPlanSub?.cancel();
+    _healthRecordSub?.cancel();
     _householdSub = null;
     _taskSub = null;
     _caregiverSub = null;
     _routineSub = null;
+    _medicationPlanSub = null;
+    _healthRecordSub = null;
   }
 
   @override
@@ -1068,6 +1227,18 @@ class FirebaseCareService implements CareService {
     String taskID,
   ) =>
       _householdRef(householdID).collection('tasks').doc(taskID);
+
+  DocumentReference<Map<String, dynamic>> _medicationPlanRef(
+    String householdID,
+    String planID,
+  ) =>
+      _householdRef(householdID).collection('medicationPlans').doc(planID);
+
+  DocumentReference<Map<String, dynamic>> _healthRecordRef(
+    String householdID,
+    String recordID,
+  ) =>
+      _householdRef(householdID).collection('healthRecords').doc(recordID);
 
   void _ensureConfigured() {
     if (Firebase.apps.isEmpty) {
@@ -1210,7 +1381,10 @@ class FirebaseCareService implements CareService {
     );
   }
 
-  CareTask _taskFrom(DocumentSnapshot<Map<String, dynamic>> doc) {
+  CareTask _taskFrom(
+    DocumentSnapshot<Map<String, dynamic>> doc, {
+    bool isServerConfirmed = true,
+  }) {
     final data = doc.data();
     final title = data?['title'] as String?;
     final category = CareCategory.fromRaw(
@@ -1275,6 +1449,11 @@ class FirebaseCareService implements CareService {
       completedBy: data?['completedBy'] as String?,
       completedAt: (data?['completedAt'] as Timestamp?)?.toDate(),
       revision: _int(data?['revision']) ?? 0,
+      skipReason: data?['skipReason'] == null
+          ? null
+          : MedicationSkipReason.fromRaw(data!['skipReason'] as String),
+      skipNote: data?['skipNote'] as String?,
+      isServerConfirmed: isServerConfirmed,
     );
   }
 
@@ -1306,6 +1485,118 @@ class FirebaseCareService implements CareService {
       'displayName': displayName,
       'role': role,
       'joinedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  // ---- Health records -----------------------------------------------------
+
+  MedicationPlan _medicationPlanFrom(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    if (data == null) {
+      throw const CareServiceError(CareServiceErrorType.malformedData);
+    }
+    return MedicationPlan(
+      id: doc.id,
+      petId: data['petId'] as String? ?? '',
+      name: data['name'] as String? ?? '',
+      form: MedicationForm.fromRaw(data['form'] as String? ?? 'oral'),
+      purpose: data['purpose'] as String?,
+      sideEffects: data['sideEffects'] as String?,
+      isActive: data['isActive'] as bool? ?? true,
+      remainingDoses: _int(data['remainingDoses']),
+      createdByID: data['createdByID'] as String? ?? '',
+      createdByNameSnapshot: data['createdByName'] as String? ?? '',
+      createdAt: _anyDate(data['createdAt']) ?? DateTime.now(),
+      revision: _revision(data),
+    );
+  }
+
+  Map<String, dynamic> _medicationPlanData(MedicationPlan plan) {
+    return {
+      'id': plan.id,
+      'petId': plan.petId,
+      'name': plan.name,
+      'form': plan.form.rawValue,
+      'purpose': plan.purpose,
+      'sideEffects': plan.sideEffects,
+      'isActive': plan.isActive,
+      'remainingDoses': plan.remainingDoses,
+      'createdByID': plan.createdByID,
+      'createdByName': plan.createdByNameSnapshot,
+      'revision': plan.revision,
+    };
+  }
+
+  HealthRecord _healthRecordFrom(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    if (data == null) {
+      throw const CareServiceError(CareServiceErrorType.malformedData);
+    }
+    double? number(dynamic value) => value is num ? value.toDouble() : null;
+    return HealthRecord(
+      id: doc.id,
+      petId: data['petId'] as String? ?? '',
+      petNameSnapshot: data['petNameSnapshot'] as String? ?? '',
+      type: HealthRecordType.fromRaw(data['type'] as String? ?? 'note'),
+      occurredAt: _anyDate(data['occurredAt']) ?? DateTime.now(),
+      title: data['title'] as String? ?? '',
+      clinicName: data['clinicName'] as String?,
+      vetName: data['vetName'] as String?,
+      diagnosis: data['diagnosis'] as String?,
+      treatment: data['treatment'] as String?,
+      costMinor: _int(data['costMinor']),
+      currency: data['currency'] as String?,
+      productName: data['productName'] as String?,
+      lotNumber: data['lotNumber'] as String?,
+      nextDueAt: _anyDate(data['nextDueAt']),
+      weightKg: number(data['weightKg']),
+      temperatureC: number(data['temperatureC']),
+      notes: data['notes'] as String?,
+      attachments: (data['attachments'] as List? ?? const [])
+          .whereType<Map>()
+          .map((e) => HealthAttachment.fromJson(e.cast<String, dynamic>()))
+          .toList(),
+      createdByID: data['createdByID'] as String? ?? '',
+      createdByNameSnapshot: data['createdByName'] as String? ?? '',
+      createdAt: _anyDate(data['createdAt']) ?? DateTime.now(),
+      updatedAt: _anyDate(data['updatedAt']),
+      updatedByID: data['updatedByID'] as String?,
+      updatedByNameSnapshot: data['updatedByName'] as String?,
+      revision: _revision(data),
+    );
+  }
+
+  Map<String, dynamic> _healthRecordData(HealthRecord record) {
+    return {
+      'id': record.id,
+      'petId': record.petId,
+      'petNameSnapshot': record.petNameSnapshot,
+      'type': record.type.rawValue,
+      'occurredAt': Timestamp.fromDate(record.occurredAt),
+      'title': record.title,
+      'clinicName': record.clinicName,
+      'vetName': record.vetName,
+      'diagnosis': record.diagnosis,
+      'treatment': record.treatment,
+      'costMinor': record.costMinor,
+      'currency': record.currency,
+      'productName': record.productName,
+      'lotNumber': record.lotNumber,
+      'nextDueAt': record.nextDueAt == null
+          ? null
+          : Timestamp.fromDate(record.nextDueAt!),
+      'weightKg': record.weightKg,
+      'temperatureC': record.temperatureC,
+      'notes': record.notes,
+      'attachments': record.attachments.map((e) => e.toJson()).toList(),
+      'createdByID': record.createdByID,
+      'createdByName': record.createdByNameSnapshot,
+      'updatedByName': record.updatedByNameSnapshot,
+      'revision': record.revision,
     };
   }
 
@@ -1372,6 +1663,8 @@ class FirebaseCareService implements CareService {
       'completedAt': task.completedAt == null
           ? null
           : Timestamp.fromDate(task.completedAt!),
+      'skipReason': task.skipReason?.rawValue,
+      'skipNote': task.skipNote,
       'revision': task.revision,
     };
   }

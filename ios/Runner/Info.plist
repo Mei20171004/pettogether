@@ -27,7 +27,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Scan a one-time copaw household invitation QR code.</string>
+	<string>Scan a one-time pettogether household invitation QR code.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
@@ -89,7 +89,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>copaw</string>
+				<string>pettogether</string>
 			</array>
 		</dict>
 	</array>

@@ -740,8 +740,8 @@ class ManageHouseholdView extends StatelessWidget {
             color: PawColors.purple,
             size: 44),
         title: Text(
-          L10n.text(language, 'copaw Pro', 'copaw Pro', 'copaw Pro',
-              'copaw Pro'),
+          L10n.text(language, 'pettogether Pro', 'pettogether Pro', 'pettogether Pro',
+              'pettogether Pro'),
           style: const TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
@@ -884,7 +884,7 @@ class _PetCareCardState extends State<_PetCareCard> {
                           todayTasks.isEmpty
                               ? L10n.text(language, 'Nothing scheduled',
                                   '予定なし', '暂无安排', '예정 없음')
-                              : '$completed.length / ${todayTasks.length}',
+                              : '${completed.length} / ${todayTasks.length}',
                           style: const TextStyle(
                               fontSize: 12, color: PawColors.muted),
                         ),

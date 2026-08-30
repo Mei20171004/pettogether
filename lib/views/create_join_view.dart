@@ -282,10 +282,10 @@ class _CreateJoinViewState extends State<CreateJoinView> {
                 decoration: petFieldDecoration(
                   hintText: L10n.text(
                       language,
-                      'Paste a copaw invitation link',
-                      'copaw の招待リンクを貼り付け',
-                      '粘贴 copaw 邀请链接',
-                      'copaw 초대 링크 붙여넣기'),
+                      'Paste a pettogether invitation link',
+                      'pettogether の招待リンクを貼り付け',
+                      '粘贴 pettogether 邀请链接',
+                      'pettogether 초대 링크 붙여넣기'),
                 ),
               ),
             ),
@@ -697,7 +697,7 @@ class _CreateJoinViewState extends State<CreateJoinView> {
                     ),
                     const SizedBox(width: 9),
                     Text(
-                      'copaw',
+                      'pettogether',
                       style: Theme.of(context)
                           .textTheme
                           .headlineMedium

@@ -7,7 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'firebase_care_service.dart';
 
-const _channelId = 'copaw_care';
+const _channelId = 'pettogether_care';
 const _channelName = 'Care updates';
 const _channelDescription = 'Task handoffs and pet-care reminders.';
 
@@ -67,7 +67,7 @@ class NotificationService {
     _initialized = true;
 
     const settings = InitializationSettings(
-      android: AndroidInitializationSettings('ic_stat_copaw'),
+      android: AndroidInitializationSettings('ic_stat_pettogether'),
       iOS: DarwinInitializationSettings(
         requestAlertPermission: false,
         requestBadgePermission: false,
@@ -226,7 +226,7 @@ class NotificationService {
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
     final notification = message.notification;
-    final title = notification?.title ?? message.data['title'] ?? 'copaw';
+    final title = notification?.title ?? message.data['title'] ?? 'pettogether';
     final body =
         notification?.body ??
         message.data['body'] ??

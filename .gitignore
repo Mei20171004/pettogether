@@ -122,4 +122,7 @@ google-services.json
 GoogleService-Info.plist
 # Reference copy of the Kate (care-paw) project kept for feature-porting only.
 Katecode/
+# Reference copy of the Mingze (PetTogether-main) project kept for
+# feature-porting only.
+Mingze code/
 functions/node_modules/

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
@@ -12,13 +13,32 @@ import 'profile_edit_view.dart';
 import 'widgets/common.dart';
 import 'widgets/task_card.dart';
 
-class TodayView extends StatelessWidget {
+class TodayView extends StatefulWidget {
   const TodayView({super.key});
+
+  @override
+  State<TodayView> createState() => _TodayViewState();
+}
+
+class _TodayViewState extends State<TodayView> {
+  /// Pet the task lists are filtered to. Null means every pet ("All").
+  String? _selectedPetId;
 
   @override
   Widget build(BuildContext context) {
     final store = context.watch<CareStore>();
     final language = context.watch<AppLanguageStore>().language;
+
+    // Drop a stale filter if the pet was removed from the household.
+    final pets = store.household?.pets ?? const <Pet>[];
+    if (_selectedPetId != null && !pets.any((p) => p.id == _selectedPetId)) {
+      _selectedPetId = null;
+    }
+
+    final unclaimed = _filtered(store.unclaimedTasks);
+    final claimed = _filtered(store.claimedTasks);
+    final completed = _filtered(store.completedTasks);
+    final skipped = _filtered(store.skippedTasks);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -79,17 +99,35 @@ class TodayView extends StatelessWidget {
                     const SizedBox(height: 20),
                     _petHeroCard(context, store, language),
                     const SizedBox(height: 20),
+                    _progressCard(context, language,
+                        completed: completed.length,
+                        total: unclaimed.length +
+                            claimed.length +
+                            completed.length),
+                    if (pets.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      PetSectionTitle(
+                        title: L10n.text(
+                            language, 'My pets', 'うちの子', '我的宠物', '우리 아이들'),
+                        detail:
+                            '${pets.length} ${L10n.text(language, pets.length == 1 ? 'PET' : 'PETS', '匹', '只宠物', '마리')}',
+                      ),
+                      const SizedBox(height: 12),
+                      _petFilterChips(pets, language),
+                    ],
+                    ..._healthDueBanner(context, store, language),
+                    const SizedBox(height: 20),
                     _section(
                       title: L10n.text(
                           language, 'Needs a person', '担当が必要', '需要人照顾', '담당자 필요'),
-                      detail: store.unclaimedTasks.isEmpty
+                      detail: unclaimed.isEmpty
                           ? L10n.text(language, 'CLEAR', 'なし', '无', '없음')
-                          : '${store.unclaimedTasks.length} ${L10n.text(language, 'UNCLAIMED', '未担当', '未认领', '미담당')}',
-                      child: store.unclaimedTasks.isEmpty
+                          : '${unclaimed.length} ${L10n.text(language, 'UNCLAIMED', '未担当', '未认领', '미담당')}',
+                      child: unclaimed.isEmpty
                           ? _emptyState(context, language)
                           : Column(
                               children: [
-                                for (final task in store.unclaimedTasks)
+                                for (final task in unclaimed)
                                   Padding(
                                     padding: const EdgeInsets.only(bottom: 12),
                                     child: TaskCard(task: task),
@@ -97,16 +135,16 @@ class TodayView extends StatelessWidget {
                               ],
                             ),
                     ),
-                    if (store.claimedTasks.isNotEmpty) ...[
+                    if (claimed.isNotEmpty) ...[
                       const SizedBox(height: 20),
                       _section(
                         title: L10n.text(
                             language, 'In progress', '進行中', '进行中', '진행 중'),
                         detail:
-                            '${store.claimedTasks.length} ${L10n.text(language, 'CLAIMED', '担当者あり', '已认领', '담당자 있음')}',
+                            '${claimed.length} ${L10n.text(language, 'CLAIMED', '担当者あり', '已认领', '담당자 있음')}',
                         child: Column(
                           children: [
-                            for (final task in store.claimedTasks)
+                            for (final task in claimed)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
                                 child: TaskCard(task: task),
@@ -115,7 +153,7 @@ class TodayView extends StatelessWidget {
                         ),
                       ),
                     ],
-                    if (store.completedTasks.isNotEmpty) ...[
+                    if (completed.isNotEmpty) ...[
                       const SizedBox(height: 20),
                       _section(
                         title: L10n.text(
@@ -124,7 +162,7 @@ class TodayView extends StatelessWidget {
                             '共同照护', '함께하는 케어'),
                         child: Column(
                           children: [
-                            for (final task in store.completedTasks.take(3))
+                            for (final task in completed.take(3))
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
                                 child: TaskCard(task: task),
@@ -133,16 +171,16 @@ class TodayView extends StatelessWidget {
                         ),
                       ),
                     ],
-                    if (store.skippedTasks.isNotEmpty) ...[
+                    if (skipped.isNotEmpty) ...[
                       const SizedBox(height: 20),
                       _section(
                         title: L10n.text(language, 'Skipped today',
                             '今日スキップ', '今日已跳过', '오늘 건너뜀'),
                         detail:
-                            '${store.skippedTasks.length} ${L10n.text(language, 'SKIPPED', 'スキップ', '已跳过', '건너뜀')}',
+                            '${skipped.length} ${L10n.text(language, 'SKIPPED', 'スキップ', '已跳过', '건너뜀')}',
                         child: Column(
                           children: [
-                            for (final task in store.skippedTasks)
+                            for (final task in skipped)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
                                 child: TaskCard(task: task),
@@ -161,8 +199,33 @@ class TodayView extends StatelessWidget {
     );
   }
 
+  /// Tasks narrowed to the selected pet chip; everything when "All" is active.
+  List<CareTask> _filtered(List<CareTask> tasks) {
+    final petId = _selectedPetId;
+    if (petId == null) return tasks;
+    return tasks
+        .where((t) => t.effectivePetIds.contains(petId) || t.petID == petId)
+        .toList();
+  }
+
   Widget _greetingHeader(
       BuildContext context, CareStore store, AppLanguage language) {
+    final now = DateTime.now();
+    final hour = now.hour;
+    final greeting = hour < 12
+        ? L10n.text(language, 'Good morning', 'おはよう', '早上好', '좋은 아침')
+        : hour < 18
+            ? L10n.text(language, 'Good afternoon', 'こんにちは', '下午好', '좋은 오후')
+            : L10n.text(language, 'Good evening', 'こんばんは', '晚上好', '좋은 저녁');
+    final name = store.currentCaregiver?.displayName ??
+        L10n.text(language, 'pet parent', '飼い主さん', '铲屎官', '집사님');
+    final dateLine = DateFormat.MMMMEEEEd(language.rawValue).format(now);
+    final comma = switch (language) {
+      AppLanguage.japanese => '、',
+      AppLanguage.chinese => '，',
+      _ => ', ',
+    };
+
     return Row(
       children: [
         Expanded(
@@ -170,7 +233,7 @@ class TodayView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Hi, ${store.currentCaregiver?.displayName ?? 'pet parent'}',
+                '$greeting$comma$name 👋',
                 style: const TextStyle(
                   fontSize: 21,
                   fontWeight: FontWeight.bold,
@@ -179,8 +242,7 @@ class TodayView extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
-                L10n.text(language, 'Let’s make today a happy one.',
-                    '今日もいい一日に。', '让今天也成为快乐的一天。', '오늘도 행복한 하루가 되길.'),
+                dateLine,
                 style: const TextStyle(fontSize: 14, color: PawColors.muted),
               ),
             ],
@@ -206,6 +268,213 @@ class TodayView extends StatelessWidget {
     );
   }
 
+  /// Copaw-style progress card: big done/total line, percent badge, bar.
+  Widget _progressCard(BuildContext context, AppLanguage language,
+      {required int completed, required int total}) {
+    final percent = total == 0 ? 0 : (completed / total * 100).round();
+    final tip = completed == 0
+        ? L10n.text(language, '🐾 A fresh day of care starts here.',
+            '🐾 今日のケアはここから。', '🐾 新的一天照护从这里开始。', '🐾 오늘의 케어는 여기서 시작해요.')
+        : completed == total
+            ? L10n.text(language, '✨ All wrapped up — time for cuddles!',
+                '✨ 全部おわり。なでなでの時間！', '✨ 全部完成，该抱抱了！', '✨ 다 끝났어요. 안아줄 시간!')
+            : L10n.text(language, '✨ Great teamwork — keep it up!',
+                '✨ いいチームワーク、この調子！', '✨ 大家配合得很棒，继续保持！',
+                '✨ 팀워크 최고예요, 계속 가요!');
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.97),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
+          boxShadow: [
+            BoxShadow(
+              color: PawColors.purpleDark.withValues(alpha: 0.08),
+              blurRadius: 18,
+              offset: const Offset(0, 9),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            // Soft sky orb peeking in from the corner, like the Copaw card.
+            Positioned(
+              top: -46,
+              right: -36,
+              child: Container(
+                width: 130,
+                height: 130,
+                decoration: const BoxDecoration(
+                  color: PawColors.lavender,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              L10n.text(language, "Today's care progress",
+                                  '今日のケア進捗', '今日照护进度', '오늘의 케어 진행'),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: PawColors.muted,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text.rich(
+                              TextSpan(
+                                text:
+                                    '${L10n.text(language, 'Done', '完了', '已完成', '완료')} $completed',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: PawColors.purpleDark,
+                                ),
+                                children: [
+                                  TextSpan(
+                                    text:
+                                        ' / $total ${L10n.text(language, 'tasks', '件', '项', '건')}',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: PawColors.muted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        width: 54,
+                        height: 54,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: PawColors.skyTint,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$percent%',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: PawColors.purple,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: total == 0 ? 0 : completed / total,
+                      minHeight: 8,
+                      backgroundColor: PawColors.lavender,
+                      valueColor:
+                          const AlwaysStoppedAnimation(PawColors.purple),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    tip,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: PawColors.ink,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Horizontal "All / each pet" chip strip that filters the task lists.
+  Widget _petFilterChips(List<Pet> pets, AppLanguage language) {
+    return SizedBox(
+      height: 44,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          _petChip(
+            label: L10n.text(language, 'All', 'すべて', '全部', '전체'),
+            emoji: '🏠',
+            selected: _selectedPetId == null,
+            onTap: () => setState(() => _selectedPetId = null),
+          ),
+          for (final pet in pets)
+            _petChip(
+              label: pet.name,
+              emoji: petTypeEmoji(pet.type),
+              selected: _selectedPetId == pet.id,
+              onTap: () => setState(() => _selectedPetId = pet.id),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _petChip({
+    required String label,
+    required String emoji,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 9),
+      child: Material(
+        color: selected ? PawColors.purple : Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: selected
+                    ? PawColors.purple
+                    : PawColors.purple.withValues(alpha: 0.14),
+              ),
+            ),
+            child: Row(
+              children: [
+                Text(emoji, style: const TextStyle(fontSize: 15)),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? Colors.white : PawColors.ink,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _petHeroCard(
       BuildContext context, CareStore store, AppLanguage language) {
     final remaining = store.unclaimedTasks.length + store.claimedTasks.length;
@@ -224,6 +493,78 @@ class TodayView extends StatelessWidget {
         MaterialPageRoute(builder: (_) => PetDetailView(pet: pet)),
       ),
     );
+  }
+
+  /// Vaccinations and dewormings coming due. Small and quiet until something
+  /// is actually close, then impossible to miss.
+  List<Widget> _healthDueBanner(
+      BuildContext context, CareStore store, AppLanguage language) {
+    final due = store.upcomingHealthDue();
+    if (due.isEmpty) return const [];
+    final soonest = due.first;
+    final pet = store.household?.pets
+        .where((p) => p.id == soonest.record.petId)
+        .firstOrNull;
+    if (pet == null) return const [];
+
+    final urgent = soonest.daysUntilDue <= 0;
+    final color = urgent ? PawColors.rose : PawColors.yellow;
+    final when = soonest.isOverdue
+        ? L10n.text(language, 'was due ${-soonest.daysUntilDue} days ago',
+            '${-soonest.daysUntilDue}日前が期限', '已过期 ${-soonest.daysUntilDue} 天',
+            '${-soonest.daysUntilDue}일 지남')
+        : soonest.isDueToday
+            ? L10n.text(language, 'is due today', '今日が期限', '今天到期', '오늘 마감')
+            : L10n.text(
+                language,
+                'is due in ${soonest.daysUntilDue} days',
+                'あと${soonest.daysUntilDue}日',
+                '还有 ${soonest.daysUntilDue} 天到期',
+                '${soonest.daysUntilDue}일 남음');
+
+    return [
+      const SizedBox(height: 20),
+      InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => PetDetailView(pet: pet)),
+        ),
+        child: PetCard(
+          padding: 14,
+          child: Row(
+            children: [
+              EmojiCareIcon(emoji: '💉', color: color, size: 40),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${pet.name} · ${soonest.record.title}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: PawColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      when,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: PawColors.muted),
+            ],
+          ),
+        ),
+      ),
+    ];
   }
 
   Widget _section({
@@ -245,7 +586,7 @@ class TodayView extends StatelessWidget {
     return PetCard(
       child: Column(
         children: [
-          const CareIcon(icon: Icons.check, color: PawColors.green, size: 56),
+          const EmojiCareIcon(emoji: '🎉', color: PawColors.green, size: 56),
           const SizedBox(height: 10),
           Text(
             L10n.text(language, 'Everything is handled', '全部おわり',
@@ -280,7 +621,6 @@ class TodayView extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _PetHeroCarousel extends StatefulWidget {
@@ -369,8 +709,8 @@ class _PetHeroCarouselState extends State<_PetHeroCarousel> {
                       size: 14, color: PawColors.purple),
                   const SizedBox(width: 5),
                   Text(
-                    L10n.text(
-                        language, 'CARE PULSE', 'ケアパルス', '护理脉搏', '케어 펄스'),
+                    L10n.text(language, "TODAY'S PETTOGETHER", '今日のペットゥギャザー',
+                        '今日的 PETTOGETHER', '오늘의 펫투게더'),
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,

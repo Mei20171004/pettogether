@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
-/// Soft cream-to-lavender screen background used across the app.
+/// Warm cream screen background used across the app.
 class PetScreenBackground extends StatelessWidget {
   const PetScreenBackground({super.key});
 
@@ -13,12 +13,40 @@ class PetScreenBackground extends StatelessWidget {
         gradient: LinearGradient(
           colors: [
             PawColors.cream,
-            Color(0xCCEDEBFF), // pawLavender @ ~0.72 opacity
+            Color(0xCCFFF3DE), // creamYellow @ ~0.8 opacity
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
+    );
+  }
+}
+
+/// Rounded emoji tile on a pastel tint, matching the Copaw demo's task icons.
+class EmojiCareIcon extends StatelessWidget {
+  const EmojiCareIcon({
+    super.key,
+    required this.emoji,
+    required this.color,
+    this.size = 44,
+  });
+
+  final String emoji;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(size * 0.32),
+      ),
+      alignment: Alignment.center,
+      child: Text(emoji, style: TextStyle(fontSize: size * 0.44)),
     );
   }
 }
@@ -51,7 +79,7 @@ class CareIcon extends StatelessWidget {
   }
 }
 
-/// Hero illustration shipped as an asset (the SwiftUI `CopawPets` image).
+/// Hero illustration shipped as an asset.
 class PetArtwork extends StatelessWidget {
   const PetArtwork({super.key, this.height = 180});
 
@@ -64,7 +92,7 @@ class PetArtwork extends StatelessWidget {
         top: Radius.circular(28),
       ),
       child: Image.asset(
-        'assets/images/copaw_pets.png',
+        'assets/images/pettogether_pets.png',
         height: height,
         width: double.infinity,
         fit: BoxFit.cover,
@@ -231,5 +259,24 @@ InputDecoration petFieldDecoration({String? hintText}) {
       borderRadius: BorderRadius.circular(15),
       borderSide: const BorderSide(color: PawColors.purple, width: 1.4),
     ),
+  );
+}
+
+/// Small purple caption above a form field group, used across the task and
+/// medication forms.
+Widget fieldLabel(String title, IconData icon) {
+  return Row(
+    children: [
+      Icon(icon, size: 15, color: PawColors.purpleDark),
+      const SizedBox(width: 6),
+      Text(
+        title,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: PawColors.purpleDark,
+        ),
+      ),
+    ],
   );
 }

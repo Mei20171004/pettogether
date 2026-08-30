@@ -1,15 +1,16 @@
-# copaw (Flutter)
+# pettogether (Flutter)
 
 A Flutter app for shared pet care, without the guesswork — households,
 recurring routines, task handoffs, invitation-based joining with owner
 approval, and push notifications. This build merges the original
 `pettogether` codebase with the unique features from the Kate/care-paw
 rebuild (QR invitations, notifications, skip/restore, richer pet types,
-multi-pet tasks, Pro page).
+multi-pet tasks, Pro page), plus the health-record features from the Mingze
+rebuild (medication courses, medical history, vet visit pack).
 
 ## Overview
 
-copaw gives families and shared caregivers one place to coordinate recurring
+pettogether gives families and shared caregivers one place to coordinate recurring
 routines and one-time needs, decide who is responsible, and see what has
 already been done.
 
@@ -34,9 +35,27 @@ already been done.
 - **Push notifications** (FCM + local notifications + Cloud Functions):
   task created/claimed/completed, direct/open assignment requests, join
   requests, and 10–25-minute routine reminders; per-member opt-in toggle
-- **Deep links**: `copaw://invite/<id>` opens the invitation preview
+- Track **medication courses** per pet (medicine, form, purpose, side effects,
+  dose times, explicit course start/end) — today's doses appear at the top of
+  **Today**, and recording one tells the rest of the household so nobody
+  double-doses. Skips carry a reason, mis-taps can be undone for 5 minutes, and
+  each course shows a 7/30-day adherence breakdown of given / skipped /
+  not-recorded
+- Keep a **medical history** per pet — vet visits, vaccinations, deworming, lab
+  results, surgery, symptoms, weight and notes. The form changes shape with the
+  record type (clinic + diagnosis + treatment + cost for a visit; product, lot
+  number and **next-due date** for a vaccination), events can be **backdated**,
+  records can be **edited and deleted**, and photos of lab printouts or
+  prescriptions attach to any record
+- Vaccinations and dewormings with a next-due date surface on **Today** and the
+  pet's health summary, and push a reminder a week out and on the day
+- Build a **vet visit pack** for a pet over 7/30/90 days — current medication,
+  how the doses actually went, symptoms, weight, past visits and vaccinations,
+  with the empty sections named rather than silently dropped — and export it as
+  a **shareable PDF**
+- **Deep links**: `pettogether://invite/<id>` opens the invitation preview
 - Switch between **English, Japanese, Chinese and Korean**
-- copaw Pro marketing page (purchases not connected yet)
+- pettogether Pro marketing page (purchases not connected yet)
 - Keep household data private with member-scoped Security Rules
 
 ## Running
@@ -61,11 +80,14 @@ lib/
 ├── config/app_config.dart        # useFirebase switch
 ├── l10n/l10n.dart                # EN/JA/ZH/KO helper + language store
 ├── theme/app_theme.dart          # paw color palette + button styles
-├── models/models.dart            # Household, Caregiver, Routine, Task, Invitation, …
+├── models/
+│   ├── models.dart               # Household, Caregiver, Routine, Task, Invitation, …
+│   └── health.dart               # MedicationPlan/Slot/Dose, PlannedDose, HealthRecord, …
 ├── services/
 │   ├── care_service.dart         # service interface + typed errors
 │   ├── mock_care_service.dart    # offline demo implementation
 │   ├── firebase_care_service.dart# Firestore implementation
+│   ├── vet_report_pdf.dart       # vet visit pack -> PDF -> share sheet
 │   └── notification_service.dart # FCM + local notifications
 ├── store/care_store.dart         # ChangeNotifier shared state + actions
 ├── utils/                        # calendar math, uuid, extensions
@@ -83,7 +105,8 @@ lib/
     ├── manage_household_view.dart# invitations QR, join requests, notifications, pets
     ├── pro_view.dart
     ├── add_task_view.dart        # multi-pet selector
-    └── widgets/                  # TaskCard, PetCard, CareIcon, PetTypeIcon, …
+    ├── health/                   # medication courses, medical records, vet pack
+    └── widgets/                  # TaskCard, DoseCard, PetCard, CareIcon, …
 ```
 
 ## Firebase
@@ -137,12 +160,34 @@ options (e.g. web).
 - Task status includes `skipped` (single-occurrence skip); skipped tasks
   appear in Today/Skip sections and can be restored.
 - Invitations live in a top-level `invitations/{id}` collection
-  (`copaw://invite/<id>` deep link), join requests under
+  (`pettogether://invite/<id>` deep link), join requests under
   `households/{id}/joinRequests/{uid}`, and FCM device tokens under
   `members/{uid}/devices/{token}`. Owners create members only after an
   approved join request; `household.ownerID` gates owner actions.
 - Routine occurrences use the id format `<routineID>_yyyy-MM-dd` — the
   reminder Cloud Function looks up the same ids to avoid duplicate alerts.
+- Medication works the same way: a course lives in
+  `households/{id}/medicationPlans/{planId}` and its doses are expanded on
+  demand, so only doses somebody acted on get a document, at
+  `medicationDoses/<planId>_yyyy-MM-dd_HHmm`. That id is deterministic, so two
+  caregivers recording the same dose collide on one document and the later one
+  is told who got there first, instead of both succeeding.
+- Each recorded dose snapshots the medicine name and dose text, so editing a
+  course never rewrites what actually happened. That is why there is no
+  immutable schedule-version chain — the history lives in the doses.
+- A dose that Firestore has not confirmed (cache read or pending write) is
+  displayed as *not recorded*, never as given. Showing a stale "given" is the
+  one failure that could leave an animal dosed twice or not at all.
+- Medical records live in `households/{id}/healthRecords/{recordId}` with
+  photos under `households/{id}/records/{recordId}/` in Storage. Saving a
+  `weight` record also appends to `Pet.weightHistory`, so the existing trend
+  chart picks it up without a second source of truth.
+- Day boundaries for medication use the device-local calendar, the same as
+  routines (see `lib/utils/care_calendar.dart`). Running two different notions
+  of "today" in one app would be worse than the cross-timezone edge case;
+  `timeZoneIdentifier` is still stored for the Cloud Functions' scheduling.
+- `weekdays` is `1 = Sunday … 7 = Saturday` everywhere, including in
+  `functions/index.js`.
 
 ## Porting notes
 

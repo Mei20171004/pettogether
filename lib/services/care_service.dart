@@ -1,3 +1,4 @@
+import '../models/health.dart';
 import '../models/models.dart';
 
 enum CareServiceErrorType {
@@ -33,10 +34,17 @@ enum CareServiceErrorType {
   alreadyMember,
   notOwner,
   joinRequestPending,
+  medicationPlanNotFound,
+  invalidMedicationPlan,
+  healthRecordNotFound,
+  invalidHealthRecord,
+  attachmentTooLarge,
+  attachmentLimitReached,
+  attachmentUploadFailed,
 }
 
 /// Thrown by every [CareService] implementation. Carries a typed [type] and,
-/// for `taskAlreadyClaimed`, the name of the caregiver who claimed it.
+/// for `taskAlreadyClaimed`, the name of the caregiver who got there first.
 class CareServiceError implements Exception {
   const CareServiceError(this.type, {this.assigneeName});
 
@@ -111,6 +119,20 @@ class CareServiceError implements Exception {
         return 'Only the household owner can do this.';
       case CareServiceErrorType.joinRequestPending:
         return 'Your request is still waiting for the owner’s approval.';
+      case CareServiceErrorType.medicationPlanNotFound:
+        return 'This medication course is no longer available.';
+      case CareServiceErrorType.invalidMedicationPlan:
+        return 'Check the medicine name, dose times and course dates, then try again.';
+      case CareServiceErrorType.healthRecordNotFound:
+        return 'This health record is no longer available.';
+      case CareServiceErrorType.invalidHealthRecord:
+        return 'Check the record details and try again.';
+      case CareServiceErrorType.attachmentTooLarge:
+        return "That photo is too large. Try one under 5 MB.";
+      case CareServiceErrorType.attachmentLimitReached:
+        return 'A record can hold up to 10 photos.';
+      case CareServiceErrorType.attachmentUploadFailed:
+        return "We couldn't upload that photo. Please try again.";
     }
   }
 
@@ -156,6 +178,12 @@ abstract class CareService {
 
   Future<void> addTask(CareTask task, String householdID);
   Future<void> addRoutine(CareRoutine routine, String householdID);
+
+  /// Replaces a routine in place, keeping its id so today's occurrence keeps
+  /// pointing at the same document.
+  Future<void> updateRoutine(CareRoutine routine, String householdID);
+
+  Future<void> deleteRoutine(String routineID, String householdID);
 
   Future<void> updateProfile(Household household, Caregiver caregiver);
 
@@ -215,11 +243,17 @@ abstract class CareService {
 
   /// Marks a single routine occurrence as skipped without touching the
   /// routine itself. Persists an override task document at the occurrence id.
+  ///
+  /// Medication doses pass a [reason]: "no walk today" needs no explanation,
+  /// a missed dose does, and "refused it twice, vomited once" is a finding a
+  /// vet can act on.
   Future<void> skipTaskOccurrence(
     CareTask task,
     String householdID,
-    Caregiver caregiver,
-  );
+    Caregiver caregiver, {
+    MedicationSkipReason? reason,
+    String? note,
+  });
 
   /// Restores a previously skipped (or otherwise overridden) occurrence back
   /// to its routine-derived state (unclaimed).
@@ -299,6 +333,32 @@ abstract class CareService {
     required String caregiverID,
     required bool enabled,
   });
+
+  // -------------------------------------------------------------------------
+  // Health records: medication courses, doses, and medical history
+  // -------------------------------------------------------------------------
+
+  void observeMedicationPlans({
+    required String householdID,
+    required void Function(List<MedicationPlan>) onChange,
+    required void Function(Object error) onError,
+  });
+
+  void observeHealthRecords({
+    required String householdID,
+    required void Function(List<HealthRecord>) onChange,
+    required void Function(Object error) onError,
+  });
+
+  /// Creates or replaces the drug details of a course. The schedule lives on
+  /// the course's routines, so it is written separately.
+  Future<void> saveMedicationPlan(MedicationPlan plan, String householdID);
+
+  Future<void> deleteMedicationPlan(String planID, String householdID);
+
+  Future<void> saveHealthRecord(HealthRecord record, String householdID);
+
+  Future<void> deleteHealthRecord(String recordID, String householdID);
 
   void stopObserving();
 }

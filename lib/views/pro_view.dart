@@ -5,7 +5,7 @@ import '../l10n/l10n.dart';
 import '../theme/app_theme.dart';
 import 'widgets/common.dart';
 
-/// Static marketing page for copaw Pro (port of the Kate build). Purchases are
+/// Static marketing page for pettogether Pro (port of the Kate build). Purchases are
 /// intentionally not connected yet — the CTA shows a "Coming soon" snackbar.
 class ProView extends StatelessWidget {
   const ProView({super.key});
@@ -17,8 +17,8 @@ class ProView extends StatelessWidget {
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: Text(L10n.text(language, 'copaw Pro', 'copaw Pro', 'copaw Pro',
-            'copaw Pro')),
+        title: Text(L10n.text(language, 'pettogether Pro', 'pettogether Pro', 'pettogether Pro',
+            'pettogether Pro')),
       ),
       body: Stack(
         children: [
@@ -148,10 +148,10 @@ class ProView extends StatelessWidget {
           Text(
             L10n.text(
               language,
-              'copaw Pro gives every caregiver a clearer shared routine.',
-              'copaw Pro はすべてのケアギバーに、より明確な共有ルーティンを。',
-              'copaw Pro 让每位照护者的共享日常更清晰。',
-              'copaw Pro는 모든 케어기버에게 더 명확한 공유 루틴을 제공합니다.',
+              'pettogether Pro gives every caregiver a clearer shared routine.',
+              'pettogether Pro はすべてのケアギバーに、より明確な共有ルーティンを。',
+              'pettogether Pro 让每位照护者的共享日常更清晰。',
+              'pettogether Pro는 모든 케어기버에게 더 명확한 공유 루틴을 제공합니다.',
             ),
             textAlign: TextAlign.center,
             style: const TextStyle(color: Color(0xEFFFFFFF), height: 1.35),

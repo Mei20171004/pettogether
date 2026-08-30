@@ -8,6 +8,7 @@ import '../models/models.dart';
 import '../store/care_store.dart';
 import '../theme/app_theme.dart';
 import 'widgets/common.dart';
+import 'widgets/weight_chart.dart';
 
 /// Reusable "pet insights" content: Today (to-do/done), This week (completion)
 /// and Trends (timing + weight charts). Used by both the pet detail page and
@@ -414,84 +415,7 @@ class _PetInsightsViewState extends State<PetInsightsView> {
   }
 
   Widget _weightChart(Pet pet, AppLanguage language) {
-    final cutoff = DateTime.now().subtract(Duration(days: _weightMonths * 30));
-    final entries = pet.weightHistory
-        .where((e) => !e.date.isBefore(cutoff))
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
-    final spots = <FlSpot>[
-      for (var i = 0; i < entries.length; i++)
-        FlSpot(i.toDouble(), entries[i].weightKg),
-    ];
-
-    return Container(
-      height: 220,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: spots.length < 2
-          ? Center(
-              child: Text(L10n.text(language, 'Not enough data', 'データ不足',
-                  '数据不足', '데이터 부족')))
-          : LineChart(
-              LineChartData(
-                gridData: const FlGridData(show: true),
-                borderData: FlBorderData(show: false),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: spots,
-                    isCurved: true,
-                    color: PawColors.blue,
-                    barWidth: 3,
-                    dotData: const FlDotData(show: true),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: PawColors.blue.withValues(alpha: 0.10),
-                    ),
-                  ),
-                ],
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 40,
-                      getTitlesWidget: (v, meta) => Text(
-                        v.toStringAsFixed(1),
-                        style: const TextStyle(
-                            fontSize: 10, color: PawColors.muted),
-                      ),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (v, meta) {
-                        final i = v.toInt();
-                        if (i < 0 || i >= entries.length) {
-                          return const SizedBox();
-                        }
-                        final d = entries[i].date;
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            '${d.month}/${d.day}',
-                            style: const TextStyle(
-                                fontSize: 10, color: PawColors.muted),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
-                ),
-              ),
-            ),
-    );
+    return WeightChart(pet: pet, months: _weightMonths, language: language);
   }
 
   // -------------------------------------------------------------------------

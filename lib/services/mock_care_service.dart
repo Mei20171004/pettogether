@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/health.dart';
 import '../models/models.dart';
 import '../utils/care_calendar.dart';
 import '../utils/extensions.dart';
@@ -28,12 +29,16 @@ class MockCareService implements CareService {
   List<CareTask> _tasks = [];
   List<Caregiver> _caregivers = [];
   List<CareRoutine> _routines = [];
+  List<MedicationPlan> _medicationPlans = [];
+  List<HealthRecord> _healthRecords = [];
   Caregiver? _caregiver;
 
   void Function(Household)? _householdObserver;
   void Function(List<CareTask>)? _taskObserver;
   void Function(List<Caregiver>)? _caregiverObserver;
   void Function(List<CareRoutine>)? _routineObserver;
+  void Function(List<MedicationPlan>)? _medicationPlanObserver;
+  void Function(List<HealthRecord>)? _healthRecordObserver;
 
   Future<void> _loaded = Future.value();
 
@@ -47,11 +52,11 @@ class MockCareService implements CareService {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final householdRaw = prefs.getString('copaw.mock.household');
-    final caregiverRaw = prefs.getString('copaw.mock.caregiver');
-    final caregiversRaw = prefs.getString('copaw.mock.caregivers');
-    final routinesRaw = prefs.getString('copaw.mock.routines');
-    final tasksRaw = prefs.getString('copaw.mock.tasks');
+    final householdRaw = prefs.getString('pettogether.mock.household');
+    final caregiverRaw = prefs.getString('pettogether.mock.caregiver');
+    final caregiversRaw = prefs.getString('pettogether.mock.caregivers');
+    final routinesRaw = prefs.getString('pettogether.mock.routines');
+    final tasksRaw = prefs.getString('pettogether.mock.tasks');
 
     if (householdRaw != null) {
       _household =
@@ -77,6 +82,19 @@ class MockCareService implements CareService {
           .toList();
     }
 
+    final plansRaw = prefs.getString('pettogether.mock.medicationPlans');
+    final recordsRaw = prefs.getString('pettogether.mock.healthRecords');
+    if (plansRaw != null) {
+      _medicationPlans = (jsonDecode(plansRaw) as List)
+          .map((e) => MedicationPlan.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    if (recordsRaw != null) {
+      _healthRecords = (jsonDecode(recordsRaw) as List)
+          .map((e) => HealthRecord.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+
     if (_caregiver == null) {
       _caregivers = [demoPartner];
     }
@@ -85,17 +103,21 @@ class MockCareService implements CareService {
   Future<void> _persist() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        'copaw.mock.household', jsonEncode(_household.toJson()));
+        'pettogether.mock.household', jsonEncode(_household.toJson()));
     if (_caregiver != null) {
       await prefs.setString(
-          'copaw.mock.caregiver', jsonEncode(_caregiver!.toJson()));
+          'pettogether.mock.caregiver', jsonEncode(_caregiver!.toJson()));
     }
-    await prefs.setString('copaw.mock.caregivers',
+    await prefs.setString('pettogether.mock.caregivers',
         jsonEncode(_caregivers.map((e) => e.toJson()).toList()));
-    await prefs.setString('copaw.mock.routines',
+    await prefs.setString('pettogether.mock.routines',
         jsonEncode(_routines.map((e) => e.toJson()).toList()));
     await prefs.setString(
-        'copaw.mock.tasks', jsonEncode(_tasks.map((e) => e.toJson()).toList()));
+        'pettogether.mock.tasks', jsonEncode(_tasks.map((e) => e.toJson()).toList()));
+    await prefs.setString('pettogether.mock.medicationPlans',
+        jsonEncode(_medicationPlans.map((e) => e.toJson()).toList()));
+    await prefs.setString('pettogether.mock.healthRecords',
+        jsonEncode(_healthRecords.map((e) => e.toJson()).toList()));
   }
 
   // -------------------------------------------------------------------------
@@ -129,6 +151,8 @@ class MockCareService implements CareService {
     _caregivers = [caregiver, demoPartner];
     _routines = _seedRoutines(caregiver);
     _tasks = _seedTaskOverrides(caregiver, demoPartner);
+    _medicationPlans = _seedMedicationPlans(caregiver, pets);
+    _healthRecords = _seedHealthRecords(caregiver, pets);
     await _persist();
     _notifyAll();
     return CareSession(household: _household, caregiver: caregiver);
@@ -234,6 +258,30 @@ class MockCareService implements CareService {
     _routines = [..._routines, routine];
     await _persist();
     _notifyRoutines();
+  }
+
+  @override
+  Future<void> updateRoutine(CareRoutine routine, String householdID) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    final index = _routines.indexWhere((r) => r.id == routine.id);
+    if (index < 0) return;
+    final copy = [..._routines];
+    copy[index] = routine;
+    _routines = copy;
+    await _persist();
+    _notifyRoutines();
+  }
+
+  @override
+  Future<void> deleteRoutine(String routineID, String householdID) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    _routines = _routines.where((r) => r.id != routineID).toList();
+    // Occurrence overrides belong to a routine that no longer exists.
+    _tasks = _tasks.where((t) => t.routineID != routineID).toList();
+    await _persist();
+    _notifyAll();
   }
 
   @override
@@ -517,8 +565,10 @@ class MockCareService implements CareService {
   Future<void> skipTaskOccurrence(
     CareTask task,
     String householdID,
-    Caregiver caregiver,
-  ) async {
+    Caregiver caregiver, {
+    MedicationSkipReason? reason,
+    String? note,
+  }) async {
     await _loaded;
     _validateHousehold(householdID);
     _validatedMember(caregiver);
@@ -529,6 +579,8 @@ class MockCareService implements CareService {
     final updated = existing.task.copyWith(
       status: CareTaskStatus.skipped,
       clearAssignmentRequest: true,
+      skipReason: reason,
+      skipNote: note,
       revision: existing.task.revision + 1,
     );
     _replaceOrAppend(updated, existing.index);
@@ -750,12 +802,123 @@ class MockCareService implements CareService {
     _notificationsEnabled = enabled;
   }
 
+  // -------------------------------------------------------------------------
+  // Health records
+  // -------------------------------------------------------------------------
+
+  @override
+  void observeMedicationPlans({
+    required String householdID,
+    required void Function(List<MedicationPlan>) onChange,
+    required void Function(Object error) onError,
+  }) {
+    if (householdID != _household.id) {
+      onError(const CareServiceError(CareServiceErrorType.householdMismatch));
+      return;
+    }
+    _medicationPlanObserver = onChange;
+    onChange(_medicationPlans);
+  }
+
+  @override
+  void observeHealthRecords({
+    required String householdID,
+    required void Function(List<HealthRecord>) onChange,
+    required void Function(Object error) onError,
+  }) {
+    if (householdID != _household.id) {
+      onError(const CareServiceError(CareServiceErrorType.householdMismatch));
+      return;
+    }
+    _healthRecordObserver = onChange;
+    onChange(_healthRecords);
+  }
+
+  @override
+  Future<void> saveMedicationPlan(
+    MedicationPlan plan,
+    String householdID,
+  ) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    if (!plan.isValid) {
+      throw const CareServiceError(CareServiceErrorType.invalidMedicationPlan);
+    }
+    final index = _medicationPlans.indexWhere((p) => p.id == plan.id);
+    final copy = [..._medicationPlans];
+    if (index >= 0) {
+      copy[index] = plan.copyWith(revision: copy[index].revision + 1);
+    } else {
+      copy.add(plan);
+    }
+    _medicationPlans = copy;
+    await _persist();
+    _notifyMedication();
+  }
+
+  @override
+  Future<void> deleteMedicationPlan(
+    String planID,
+    String householdID,
+  ) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    _medicationPlans =
+        _medicationPlans.where((p) => p.id != planID).toList();
+    await _persist();
+    _notifyMedication();
+  }
+
+  @override
+  Future<void> saveHealthRecord(
+    HealthRecord record,
+    String householdID,
+  ) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    if (!record.isValid) {
+      throw const CareServiceError(CareServiceErrorType.invalidHealthRecord);
+    }
+    if (record.attachments.length > HealthRecord.maxAttachments) {
+      throw const CareServiceError(
+          CareServiceErrorType.attachmentLimitReached);
+    }
+    final index = _healthRecords.indexWhere((r) => r.id == record.id);
+    final copy = [..._healthRecords];
+    if (index >= 0) {
+      copy[index] = record.copyWith(
+        updatedAt: DateTime.now(),
+        revision: copy[index].revision + 1,
+      );
+    } else {
+      copy.add(record);
+    }
+    _healthRecords = copy;
+    await _persist();
+    _notifyHealthRecords();
+  }
+
+  @override
+  Future<void> deleteHealthRecord(
+    String recordID,
+    String householdID,
+  ) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    _healthRecords =
+        _healthRecords.where((r) => r.id != recordID).toList();
+    await _persist();
+    _notifyHealthRecords();
+  }
+
   @override
   void stopObserving() {
     _householdObserver = null;
     _taskObserver = null;
     _caregiverObserver = null;
     _routineObserver = null;
+    _medicationPlanObserver = null;
+    _healthRecordObserver = null;
   }
 
   @override
@@ -763,7 +926,7 @@ class MockCareService implements CareService {
     stopObserving();
     _caregiver = null;
     SharedPreferences.getInstance().then((prefs) {
-      prefs.remove('copaw.mock.caregiver');
+      prefs.remove('pettogether.mock.caregiver');
     });
   }
 
@@ -849,11 +1012,17 @@ class MockCareService implements CareService {
   void _notifyTasks() => _taskObserver?.call(_tasks);
   void _notifyRoutines() => _routineObserver?.call(_routines);
 
+  void _notifyMedication() => _medicationPlanObserver?.call(_medicationPlans);
+
+  void _notifyHealthRecords() => _healthRecordObserver?.call(_healthRecords);
+
   void _notifyAll() {
     _householdObserver?.call(_household);
     _taskObserver?.call(_tasks);
     _caregiverObserver?.call(_caregivers);
     _routineObserver?.call(_routines);
+    _notifyMedication();
+    _notifyHealthRecords();
   }
 
   void _ensureRoster(Caregiver current) {
@@ -865,8 +1034,96 @@ class MockCareService implements CareService {
     ];
   }
 
+  /// A short antibiotic course on the first pet, twice a day, so the demo
+  /// shows both a dose that is already due and one still ahead.
+  List<MedicationPlan> _seedMedicationPlans(
+    Caregiver caregiver,
+    List<Pet> pets,
+  ) {
+    if (pets.isEmpty) return const [];
+    final pet = pets.first;
+    final today = startOfDay(DateTime.now());
+    return [
+      MedicationPlan(
+        id: 'demo-medication-amoxicillin',
+        petId: pet.id,
+        name: 'Amoxicillin',
+        form: MedicationForm.oral,
+        purpose: 'Gut infection — 7-day course from the vet',
+        sideEffects: 'Soft stools for the first day or two',
+        remainingDoses: 6,
+        createdByID: caregiver.id,
+        createdByNameSnapshot: caregiver.displayName,
+        createdAt: today.subtract(const Duration(days: 4)),
+      ),
+    ];
+  }
+
+  /// One past vet visit and one vaccination whose next shot is a month out, so
+  /// the health summary and the due reminder both have something to show.
+  List<HealthRecord> _seedHealthRecords(
+    Caregiver caregiver,
+    List<Pet> pets,
+  ) {
+    if (pets.isEmpty) return const [];
+    final pet = pets.first;
+    final today = startOfDay(DateTime.now());
+    return [
+      HealthRecord(
+        id: 'demo-health-visit',
+        petId: pet.id,
+        petNameSnapshot: pet.name,
+        type: HealthRecordType.vetVisit,
+        occurredAt: today.subtract(const Duration(days: 4, hours: -10)),
+        title: 'Vomiting and off food',
+        clinicName: 'Sakura Animal Clinic',
+        vetName: 'Dr. Ito',
+        diagnosis: 'Mild gastroenteritis',
+        treatment: 'Amoxicillin twice daily for 7 days, bland diet',
+        costMinor: 8400,
+        currency: 'JPY',
+        notes: 'Come back if the vomiting returns after the course ends.',
+        createdByID: caregiver.id,
+        createdByNameSnapshot: caregiver.displayName,
+        createdAt: today.subtract(const Duration(days: 4)),
+      ),
+      // The history entry the seeded Amoxicillin course would have written for
+      // itself, so the demo matches what creating a course actually produces.
+      HealthRecord(
+        id: 'demo-health-amoxicillin',
+        petId: pet.id,
+        petNameSnapshot: pet.name,
+        type: HealthRecordType.medication,
+        occurredAt: today.subtract(const Duration(days: 4)),
+        title: 'Amoxicillin',
+        treatment: '08:00 Half a tablet, 20:00 Half a tablet',
+        notes: 'Gut infection — 7-day course from the vet',
+        medicationPlanId: 'demo-medication-amoxicillin',
+        createdByID: caregiver.id,
+        createdByNameSnapshot: caregiver.displayName,
+        createdAt: today.subtract(const Duration(days: 4)),
+      ),
+      HealthRecord(
+        id: 'demo-health-vaccine',
+        petId: pet.id,
+        petNameSnapshot: pet.name,
+        type: HealthRecordType.vaccination,
+        occurredAt: today.subtract(const Duration(days: 335)),
+        title: 'Rabies vaccination',
+        clinicName: 'Sakura Animal Clinic',
+        productName: 'Rabies (1-year)',
+        lotNumber: 'RB-2291',
+        nextDueAt: today.add(const Duration(days: 30)),
+        createdByID: caregiver.id,
+        createdByNameSnapshot: caregiver.displayName,
+        createdAt: today.subtract(const Duration(days: 335)),
+      ),
+    ];
+  }
+
   List<CareRoutine> _seedRoutines(Caregiver caregiver) {
     final start = startOfDay(DateTime.now());
+    final petId = _household.pets.firstOrNull?.id;
     return [
       CareRoutine(
         id: 'demo-routine-brush-coat',
@@ -890,16 +1147,42 @@ class MockCareService implements CareService {
         createdByID: caregiver.id,
         createdByNameSnapshot: caregiver.displayName,
       ),
+      // The two dose times of the seeded Amoxicillin course. A course is a
+      // plan plus one routine per dose time, so its doses show up in Today
+      // alongside the walk and the meal.
       CareRoutine(
-        id: 'demo-routine-allergy-medicine',
-        title: 'Give allergy medicine',
+        id: 'demo-routine-amoxicillin-morning',
+        title: 'Amoxicillin',
         category: CareCategory.medication,
-        hour: 10,
-        minute: 30,
-        startDate: start,
+        petID: petId,
+        petIds: petId == null ? const [] : [petId],
+        hour: 8,
+        minute: 0,
+        startDate: start.subtract(const Duration(days: 4)),
+        endDate: start.add(const Duration(days: 2)),
         timeZoneIdentifier: _household.timeZoneIdentifier,
         createdByID: caregiver.id,
         createdByNameSnapshot: caregiver.displayName,
+        medicationPlanId: 'demo-medication-amoxicillin',
+        doseText: 'Half a tablet',
+        doseInstructions: 'After breakfast',
+      ),
+      CareRoutine(
+        id: 'demo-routine-amoxicillin-evening',
+        title: 'Amoxicillin',
+        category: CareCategory.medication,
+        petID: petId,
+        petIds: petId == null ? const [] : [petId],
+        hour: 20,
+        minute: 0,
+        startDate: start.subtract(const Duration(days: 4)),
+        endDate: start.add(const Duration(days: 2)),
+        timeZoneIdentifier: _household.timeZoneIdentifier,
+        createdByID: caregiver.id,
+        createdByNameSnapshot: caregiver.displayName,
+        medicationPlanId: 'demo-medication-amoxicillin',
+        doseText: 'Half a tablet',
+        doseInstructions: 'After dinner',
       ),
       CareRoutine(
         id: 'demo-routine-evening-walk',

@@ -1,4 +1,4 @@
-/// Core domain models for copaw.
+/// Core domain models for pettogether.
 ///
 /// These mirror the Swift models in `co-paw/copaw/Models/Models.swift`.
 /// Dates are serialized as epoch milliseconds in JSON and as Firestore
@@ -196,6 +196,33 @@ class CareCategory {
 
   @override
   int get hashCode => id.hashCode;
+}
+
+/// Why a scheduled dose was not given.
+///
+/// Lives here rather than with the medication models because it is stored on
+/// [CareTask] — a medication dose *is* a care task, and skipping one is only
+/// meaningful with a reason attached ("refused it twice, vomited once" is a
+/// finding a vet can use).
+enum MedicationSkipReason {
+  petRefused('petRefused'),
+  vomited('vomited'),
+  outOfStock('outOfStock'),
+  vetInstruction('vetInstruction'),
+  alreadyGiven('alreadyGiven'),
+  other('other');
+
+  const MedicationSkipReason(this.rawValue);
+  final String rawValue;
+
+  static MedicationSkipReason fromRaw(String value) =>
+      MedicationSkipReason.values.firstWhere(
+        (e) => e.rawValue == value,
+        orElse: () => MedicationSkipReason.other,
+      );
+
+  /// `other` says nothing on its own, so the UI requires a note with it.
+  bool get requiresNote => this == MedicationSkipReason.other;
 }
 
 enum AssignmentMode {
@@ -477,10 +504,14 @@ class CareRoutine {
     required this.hour,
     required this.minute,
     required this.startDate,
+    this.endDate,
     required this.timeZoneIdentifier,
     required this.createdByID,
     required this.createdByNameSnapshot,
     this.isActive = true,
+    this.medicationPlanId,
+    this.doseText,
+    this.doseInstructions,
   });
 
   final String id;
@@ -504,10 +535,80 @@ class CareRoutine {
   final int hour;
   final int minute;
   final DateTime startDate;
+
+  /// Last day this routine runs, inclusive. Null means it runs indefinitely.
+  ///
+  /// Medication courses always set it ("seven days from Tuesday"), but it is
+  /// just as useful for an ordinary routine that ends — extra walks while a
+  /// leg heals, say.
+  final DateTime? endDate;
+
   final String timeZoneIdentifier;
   final String createdByID;
   final String createdByNameSnapshot;
   final bool isActive;
+
+  /// Links this dose time back to its [MedicationPlan] when the routine is
+  /// part of a medication course. Null for ordinary care routines.
+  ///
+  /// A course with two doses a day is two routines sharing one plan id; the
+  /// plan holds only the drug details, the routines hold the schedule.
+  final String? medicationPlanId;
+
+  /// How much to give at this time: "half a tablet", "0.5 ml".
+  final String? doseText;
+
+  /// How to give it: "after food", "hide it in a treat".
+  final String? doseInstructions;
+
+  bool get isMedication => medicationPlanId != null;
+
+  CareRoutine copyWith({
+    String? title,
+    CareCategory? category,
+    CarePriority? priority,
+    CareRoutineFrequency? frequency,
+    List<int>? weekdays,
+    int? interval,
+    String? petID,
+    List<String>? petIds,
+    int? hour,
+    int? minute,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? timeZoneIdentifier,
+    bool? isActive,
+    String? medicationPlanId,
+    String? doseText,
+    String? doseInstructions,
+    bool clearEndDate = false,
+    bool clearDoseInstructions = false,
+  }) {
+    return CareRoutine(
+      id: id,
+      title: title ?? this.title,
+      category: category ?? this.category,
+      priority: priority ?? this.priority,
+      frequency: frequency ?? this.frequency,
+      weekdays: weekdays ?? this.weekdays,
+      interval: interval ?? this.interval,
+      petID: petID ?? this.petID,
+      petIds: petIds ?? this.petIds,
+      hour: hour ?? this.hour,
+      minute: minute ?? this.minute,
+      startDate: startDate ?? this.startDate,
+      endDate: clearEndDate ? null : (endDate ?? this.endDate),
+      timeZoneIdentifier: timeZoneIdentifier ?? this.timeZoneIdentifier,
+      createdByID: createdByID,
+      createdByNameSnapshot: createdByNameSnapshot,
+      isActive: isActive ?? this.isActive,
+      medicationPlanId: medicationPlanId ?? this.medicationPlanId,
+      doseText: doseText ?? this.doseText,
+      doseInstructions: clearDoseInstructions
+          ? null
+          : (doseInstructions ?? this.doseInstructions),
+    );
+  }
 
   factory CareRoutine.fromJson(Map<String, dynamic> json) => CareRoutine(
         id: json['id'] as String,
@@ -527,10 +628,14 @@ class CareRoutine {
         minute: _intFromJson(json['minute']),
         startDate:
             _dateFromJson(json['startDate']) ?? DateTime.now(),
+        endDate: _dateFromJson(json['endDate']),
         timeZoneIdentifier: _stringFromJson(json['timeZoneIdentifier']) ?? '',
         createdByID: json['createdByID'] as String,
         createdByNameSnapshot: json['createdByNameSnapshot'] as String,
         isActive: _boolFromJson(json['isActive'], true),
+        medicationPlanId: _stringFromJson(json['medicationPlanId']),
+        doseText: _stringFromJson(json['doseText']),
+        doseInstructions: _stringFromJson(json['doseInstructions']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -547,10 +652,14 @@ class CareRoutine {
         'hour': hour,
         'minute': minute,
         'startDate': _dateToJson(startDate),
+        'endDate': _dateToJson(endDate),
         'timeZoneIdentifier': timeZoneIdentifier,
         'createdByID': createdByID,
         'createdByNameSnapshot': createdByNameSnapshot,
         'isActive': isActive,
+        'medicationPlanId': medicationPlanId,
+        'doseText': doseText,
+        'doseInstructions': doseInstructions,
       };
 }
 
@@ -577,6 +686,9 @@ class CareTask {
     this.completedBy,
     this.completedAt,
     this.revision = 0,
+    this.skipReason,
+    this.skipNote,
+    this.isServerConfirmed = true,
   }) : createdAt = createdAt ?? dueTime;
 
   final String id;
@@ -610,6 +722,23 @@ class CareTask {
   final DateTime? completedAt;
   final int revision;
 
+  /// Why a medication dose was skipped. Ordinary tasks leave this null — "no
+  /// walk today" needs no explanation, a missed dose does.
+  final MedicationSkipReason? skipReason;
+
+  /// Free-text detail for the skip; required when [skipReason] is `other`.
+  final String? skipNote;
+
+  /// False while this task is only in the local cache or has a pending write.
+  /// Not persisted — it describes the snapshot, not the task.
+  ///
+  /// Medication cards refuse to show an unconfirmed completion as done:
+  /// believing a dose was already given is the one failure here that could
+  /// leave an animal dosed twice, or not at all.
+  final bool isServerConfirmed;
+
+  static const int maxSkipNoteLength = 200;
+
   CareTask copyWith({
     CareTaskStatus? status,
     AssignmentRequest? assignmentRequest,
@@ -621,6 +750,10 @@ class CareTask {
     String? completedBy,
     DateTime? completedAt,
     int? revision,
+    MedicationSkipReason? skipReason,
+    String? skipNote,
+    bool? isServerConfirmed,
+    bool clearSkipReason = false,
   }) {
     return CareTask(
       id: id,
@@ -646,6 +779,9 @@ class CareTask {
       completedBy: completedBy ?? this.completedBy,
       completedAt: completedAt ?? this.completedAt,
       revision: revision ?? this.revision,
+      skipReason: clearSkipReason ? null : (skipReason ?? this.skipReason),
+      skipNote: clearSkipReason ? null : (skipNote ?? this.skipNote),
+      isServerConfirmed: isServerConfirmed ?? this.isServerConfirmed,
     );
   }
 
@@ -677,6 +813,10 @@ class CareTask {
         completedBy: _stringFromJson(json['completedBy']),
         completedAt: _dateFromJson(json['completedAt']),
         revision: _intFromJson(json['revision']),
+        skipReason: json['skipReason'] == null
+            ? null
+            : MedicationSkipReason.fromRaw(json['skipReason'] as String),
+        skipNote: _stringFromJson(json['skipNote']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -702,6 +842,8 @@ class CareTask {
         'completedBy': completedBy,
         'completedAt': _dateToJson(completedAt),
         'revision': revision,
+        'skipReason': skipReason?.rawValue,
+        'skipNote': skipNote,
       };
 }
 
@@ -743,7 +885,7 @@ enum JoinRequestStatus {
 }
 
 /// A one-time, expiring invitation to a household. The deep link
-/// `copaw://invite/<id>` (also encoded as a QR code) carries the id.
+/// `pettogether://invite/<id>` (also encoded as a QR code) carries the id.
 class HouseholdInvitation {
   const HouseholdInvitation({
     required this.id,
@@ -777,7 +919,7 @@ class HouseholdInvitation {
   final String? reviewedBy;
   final DateTime? reviewedAt;
 
-  String get deepLink => 'copaw://invite/$id';
+  String get deepLink => 'pettogether://invite/$id';
 
   bool get isActive =>
       status == InvitationStatus.active && expiresAt.isAfter(DateTime.now());
