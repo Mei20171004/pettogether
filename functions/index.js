@@ -11,8 +11,11 @@ const logger = require("firebase-functions/logger");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
+const { submitSurveyResponse } = require("./survey");
 
 initializeApp();
+
+exports.submitSurveyResponse = submitSurveyResponse;
 
 const db = getFirestore();
 const region = "asia-northeast1";
