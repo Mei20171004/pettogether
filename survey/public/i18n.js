@@ -12,20 +12,6 @@ export const LOCALE_NAMES = {
   en: "English",
 };
 
-// 第一题的国家 → 官方/行政工作语言
-export const COUNTRY_LOCALE = {
-  中国大陆: "zh-CN",
-  台湾: "zh-TW",
-  香港: "zh-TW",
-  日本: "ja",
-  美国: "en",
-  英国: "en",
-  加拿大: "en", // 英法双官方，取英文
-  澳大利亚: "en",
-  新加坡: "en", // 四种官方语言，取行政工作语言
-  其他: "en",
-};
-
 const DICT = {
   "zh-TW": {
     // —— 国家 ——
@@ -61,6 +47,7 @@ const DICT = {
     "多家庭 / 多住址切换": "多家庭 / 多住址切換",
     "按国家品种的疫苗时间表": "依國家與品種的疫苗時程",
     // —— 题干 ——
+    "你想用哪种语言填写？": "你想用哪種語言填寫？",
     "你在哪个国家/地区？": "你在哪個國家／地區？",
     "你现在养宠物吗？": "你現在有養寵物嗎？",
     "你养几只宠物？": "你養幾隻寵物？",
@@ -188,6 +175,7 @@ const DICT = {
     "AI 症状初筛：要不要去医院": "AI症状チェック：受診すべきか",
     "多家庭 / 多住址切换": "複数世帯・複数住所の切り替え",
     "按国家品种的疫苗时间表": "国・品種別のワクチンスケジュール",
+    "你想用哪种语言填写？": "どの言語で回答しますか？",
     "你在哪个国家/地区？": "お住まいの国・地域は？",
     "你现在养宠物吗？": "現在ペットを飼っていますか？",
     "你养几只宠物？": "何匹飼っていますか？",
@@ -318,6 +306,7 @@ const DICT = {
     "AI 症状初筛：要不要去医院": "AI symptom triage: is a vet visit needed?",
     "多家庭 / 多住址切换": "Switch between households / addresses",
     "按国家品种的疫苗时间表": "Vaccine schedule by country & breed",
+    "你想用哪种语言填写？": "Which language would you like to use?",
     "你在哪个国家/地区？": "Which country or region are you in?",
     "你现在养宠物吗？": "Do you currently have a pet?",
     "你养几只宠物？": "How many pets do you have?",

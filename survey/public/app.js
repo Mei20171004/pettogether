@@ -15,7 +15,6 @@ import {
 import {
   LOCALES,
   LOCALE_NAMES,
-  COUNTRY_LOCALE,
   getLocale,
   setLocale,
   detectLocale,
@@ -132,7 +131,6 @@ let submitting = false;
 let submitSurveyResponseCall;
 
 setLocale(detectLocale());
-setupLanguageSwitch();
 renderQuestionnaire();
 splitIntoScreens();
 applyLocale();
@@ -155,10 +153,11 @@ form.addEventListener("change", (event) => {
   input.closest(".question")?.classList.remove("is-invalid");
   hideMessage();
 
-  if (input.name === "q_country") {
-    applyCountryLocale(input.value);
-    updatePriceLabels();
+  if (input.name === "q_lang") {
+    setLocale(input.value);
+    applyLocale();
   }
+  if (input.name === "q_country") updatePriceLabels();
   if (input.name === "q_has_pet") updateScreening();
   if (input.name === "q_pain_list") enforceExclusivePainOption(input);
   updateSelectionCounter(input.closest(".question"));
@@ -204,6 +203,8 @@ form.addEventListener("submit", async (event) => {
 });
 
 function renderQuestionnaire() {
+  document.querySelector("#language-question").append(languageQuestion());
+
   renderChoices(document.querySelector("#country-options"), "q_country", countries, "radio");
 
   const background = document.querySelector("#background-questions");
@@ -505,6 +506,51 @@ function choiceQuestion({
   return fieldset;
 }
 
+// 第一题：语言。选项名永远用各语言的自称，不参与翻译。
+function languageQuestion() {
+  const fieldset = document.createElement("fieldset");
+  fieldset.className = "question";
+  fieldset.dataset.requiredGroup = "";
+  fieldset.dataset.min = "1";
+
+  const legend = document.createElement("legend");
+  legend.innerHTML =
+    '<span class="q-code">E0</span> ' +
+    '<span data-i18n="你想用哪种语言填写？"></span>';
+  fieldset.append(legend);
+
+  const choices = document.createElement("div");
+  choices.className = "choice-grid compact";
+  LOCALES.forEach((locale, index) => {
+    const label = document.createElement("label");
+    label.className = "choice";
+
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "q_lang";
+    input.value = locale;
+    input.id = `q_lang-${index}`;
+    input.checked = locale === getLocale();
+
+    const text = document.createElement("span");
+    text.className = "choice-text";
+    text.lang = locale;
+    text.textContent = LOCALE_NAMES[locale];
+
+    label.append(input, text);
+    choices.append(label);
+  });
+  fieldset.append(choices);
+
+  const error = document.createElement("p");
+  error.className = "field-error";
+  error.dataset.i18n = "请完成这一题。";
+  fieldset.append(error);
+
+  applyI18nTo(fieldset);
+  return fieldset;
+}
+
 function renderChoices(container, name, options, type, priceGroup = "") {
   options.forEach((option, index) => {
     const label = document.createElement("label");
@@ -737,33 +783,8 @@ function applyLocale() {
   applyI18nTo(document);
   updatePriceLabels();
   if (steps[currentStep]) stepTitle.textContent = t(steps[currentStep].dataset.title);
-  const select = document.querySelector("#lang-select");
-  if (select) select.value = locale;
-}
-
-// 第一题选定国家后切到该国官方语言；用户手动选过就不再覆盖
-let localeLockedByUser = false;
-
-function applyCountryLocale(country) {
-  if (localeLockedByUser) return;
-  const target = COUNTRY_LOCALE[country];
-  if (!target || target === getLocale()) return;
-  setLocale(target);
-  applyLocale();
-}
-
-function setupLanguageSwitch() {
-  const select = document.querySelector("#lang-select");
-  if (!select) return;
-  select.innerHTML = LOCALES.map(
-    (locale) => `<option value="${locale}">${LOCALE_NAMES[locale]}</option>`,
-  ).join("");
-  select.value = getLocale();
-  select.addEventListener("change", () => {
-    localeLockedByUser = true;
-    setLocale(select.value);
-    applyLocale();
-  });
+  const checked = form.querySelector(`input[name="q_lang"][value="${locale}"]`);
+  if (checked) checked.checked = true;
 }
 
 function collectResponse() {

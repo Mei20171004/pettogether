@@ -10,8 +10,8 @@
       content="PetTogether 宠物照顾习惯调研，匿名填写，约 6 分钟。"
     />
     <title>PetTogether 宠物照顾习惯调研</title>
-    <link rel="stylesheet" href="/styles.css?v=20260909-024641" />
-    <script type="module" src="/app.js?v=20260909-024641"></script>
+    <link rel="stylesheet" href="/styles.css?v=20260909-225750" />
+    <script type="module" src="/app.js?v=20260909-225750"></script>
   </head>
   <body>
     <svg class="icon-sprite" width="0" height="0" aria-hidden="true" focusable="false">
@@ -64,10 +64,6 @@
           <span class="brand-mark" aria-hidden="true"><svg class="icon brand-icon" aria-hidden="true" focusable="false"><use href="#i-paw" /></svg></span>
           <span>PetTogether</span>
         </a>
-        <label class="lang-switch">
-          <span class="sr-only">Language</span>
-          <select id="lang-select"></select>
-        </label>
       </header>
 
       <main>
@@ -94,6 +90,7 @@
 
           <form id="survey-form" novalidate>
             <section class="form-step is-active" data-step="0" data-theme="sky" data-title="基本信息" data-icon="globe">
+              <div id="language-question"></div>
               <fieldset class="question" data-required-group>
                 <legend><span class="q-code">E1</span> <span data-i18n="你在哪个国家/地区？">你在哪个国家/地区？</span></legend>
                 <div class="choice-grid compact" id="country-options"></div>
