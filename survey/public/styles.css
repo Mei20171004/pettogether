@@ -296,9 +296,10 @@ main {
 
 .progress-header h2 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 750;
-  letter-spacing: -0.02em;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 /* 一条分段进度条：每段 = 一个章节，当前段按章内进度填充 */
@@ -377,33 +378,33 @@ main {
 .question legend,
 .question-label {
   width: 100%;
-  margin-bottom: 14px;
+  margin-bottom: 22px;
   color: var(--ink);
-  font-size: 16px;
+  font-size: 26px;
   font-weight: 700;
-  line-height: 1.6;
+  line-height: 1.45;
+  letter-spacing: -0.015em;
 }
 
-.question legend > span,
-.question-label > span {
+.q-code {
   display: inline-grid;
-  min-width: 30px;
-  min-height: 24px;
-  margin-right: 6px;
+  min-width: 34px;
+  min-height: 26px;
+  margin-right: 9px;
   place-items: center;
   border-radius: 999px;
   color: var(--step);
   background: var(--step-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.03em;
 }
 
 .question-hint {
   display: block;
-  margin: -6px 0 14px;
+  margin: -12px 0 18px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .choice-grid {
@@ -459,11 +460,13 @@ main {
 
 .choice-text {
   min-width: 0;
+  font-size: 15px;
   line-height: 1.5;
 }
 
 .selection-count {
   float: right;
+  margin-left: 12px;
   padding: 3px 10px;
   border-radius: 999px;
   color: var(--step);
@@ -631,9 +634,11 @@ main {
   grid-column: 1;
   grid-row: 1;
   float: none;
-  margin-bottom: 20px;
-  font-size: 17px;
+  margin-bottom: 22px;
+  font-size: 26px;
   font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
 }
 
 .form-step > .rating-question .rating-options {
@@ -904,6 +909,17 @@ footer {
 
   .survey-head h1 {
     font-size: 22px;
+  }
+
+  .question legend,
+  .question-label,
+  .form-step > .rating-question legend {
+    font-size: 21px;
+    margin-bottom: 18px;
+  }
+
+  .progress-header h2 {
+    font-size: 14px;
   }
 
   .survey-note {

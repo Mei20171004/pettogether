@@ -4,7 +4,7 @@ const logger = require("firebase-functions/logger");
 
 const projectId = "pettogether-analysis";
 const datasetId = "surveydummy";
-const tableId = "survey_responses_v3";
+const tableId = "survey_responses";
 const region = "asia-northeast1";
 const bigquery = new BigQuery({ projectId });
 

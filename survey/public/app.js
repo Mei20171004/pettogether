@@ -464,7 +464,8 @@ function choiceQuestion({
 
   const legend = document.createElement("legend");
   legend.innerHTML =
-    `<span>${code}</span> <span data-i18n="${label.replaceAll('"', "&quot;")}">${t(label)}</span>`;
+    `<span class="q-code">${code}</span> ` +
+    `<span data-i18n="${label.replaceAll('"', "&quot;")}">${t(label)}</span>`;
   fieldset.append(legend);
 
   if (hint) {
@@ -479,7 +480,7 @@ function choiceQuestion({
     const count = document.createElement("span");
     count.className = "selection-count";
     count.dataset.selectionCount = "";
-    legend.append(count);
+    legend.prepend(count); // 置于最前，float 才会贴题干右上角而不是掉到末行
   }
 
   const choices = document.createElement("div");
@@ -566,7 +567,7 @@ function textQuestion({ code, label, name, placeholder }) {
   wrapper.className = "question text-question";
   wrapper.htmlFor = name;
   wrapper.innerHTML = `
-    <span class="question-label"><span>${code}</span> <span data-i18n="${label}">${t(label)}</span></span>
+    <span class="question-label"><span class="q-code">${code}</span> <span data-i18n="${label}">${t(label)}</span></span>
     <textarea id="${name}" name="${name}" maxlength="1000"
       placeholder="${t(placeholder)}" data-i18n-placeholder="${placeholder}"></textarea>
     <span class="field-help" data-i18n="选填">${t("选填")}</span>

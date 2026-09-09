@@ -7,7 +7,7 @@ without a valid App Check token. Valid responses are submitted through the calla
 `submitSurveyResponse` function. The function validates all answers and writes
 them to:
 
-`pettogether-analysis.surveydummy.survey_responses_v3`
+`pettogether-analysis.surveydummy.survey_responses`
 
 ## Local preview
 
