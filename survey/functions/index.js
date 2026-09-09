@@ -160,7 +160,7 @@ exports.submitSurveyResponse = onCall(
     } catch (error) {
       logger.error("Unable to store survey response in BigQuery", {
         code: error?.code,
-        message: error?.message,
+        bigQueryMessage: error?.message,
       });
       throw new HttpsError("internal", "提交暂时失败，请稍后再试。");
     }
@@ -315,6 +315,7 @@ const insertQuery = `
     NULLIF(@q_missing, '[]'), NULLIF(@q_missing_top1, ''),
     NULLIF(@q_missing_pay, ''), NULLIF(@q_missing_open, ''),
     NULLIF(@q_email, '')
+  FROM (SELECT 1)
   WHERE NOT EXISTS (
     SELECT 1
     FROM \`${projectId}.${datasetId}.${tableId}\`
