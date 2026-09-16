@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class HouseholdPro {
   const HouseholdPro({required this.active, required this.legacy});
 
-  /// At least one member of the household has a live `pro` entitlement.
+  /// At least one member has a live `pet_together_pro` entitlement.
   final bool active;
 
   /// The household existed before Pro launched, so it keeps the features it

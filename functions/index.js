@@ -32,7 +32,7 @@ const revenuecatWebhookSecret = defineSecret("REVENUECAT_WEBHOOK_SECRET");
 
 /// Only this RevenueCat entitlement unlocks Pro. Events that carry a
 /// non-empty `entitlement_ids` without it belong to some other product.
-const proEntitlementId = "pro";
+const proEntitlementId = "pet_together_pro";
 
 /// Event types that grant access. `expiration_at_ms`, when present, still has
 /// to be in the future.

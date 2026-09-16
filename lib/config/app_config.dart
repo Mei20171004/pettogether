@@ -32,7 +32,7 @@ abstract final class AppConfig {
   );
 
   /// RevenueCat entitlement identifier that unlocks pettogether Pro.
-  static const String proEntitlementId = 'pro';
+  static const String proEntitlementId = 'pet_together_pro';
 
   /// Picks the key this build is allowed to use, or null when there is none.
   ///
