@@ -7,10 +7,12 @@ import '../models/care_catalog.dart';
 import '../models/health.dart';
 import '../models/models.dart';
 import '../store/care_store.dart';
+import '../store/pro_access.dart';
 import '../theme/app_theme.dart';
 import '../utils/id.dart';
 import 'health/medication_details_form.dart';
 import 'widgets/common.dart';
+import 'pro_view.dart';
 
 class AddTaskView extends StatefulWidget {
   const AddTaskView({super.key, this.initialDate, this.initialCategory});
@@ -559,6 +561,23 @@ class _AddTaskViewState extends State<AddTaskView> {
   /// A course is a [MedicationPlan] plus one routine per dose time, which is
   /// what makes its doses ordinary, claimable care tasks.
   Future<void> _saveMedicationCourse(CareStore store) async {
+    // Editing an existing course is free; only starting an extra concurrent
+    // course is paid. Rules cannot count documents, so this limit lives here.
+    final access = context.read<ProAccess>();
+    if (!access.canStartMedicationCourse) {
+      final language = context.read<AppLanguageStore>().language;
+      await showProPaywall(
+        context,
+        reason: L10n.text(
+          language,
+          'Running more than one medication course at a time is a Pro feature.',
+          '複数の投薬コースの同時進行はPro機能です。',
+          '同时进行多个用药疗程是 Pro 功能。',
+          '여러 투약 코스를 동시에 진행하는 것은 Pro 기능입니다.',
+        ),
+      );
+      return;
+    }
     final caregiver = store.currentCaregiver;
     final petId = _petIds.isNotEmpty
         ? _petIds.first

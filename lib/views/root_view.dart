@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
 import '../models/models.dart';
 import '../services/ai_service.dart';
 import '../store/care_store.dart';
+import '../store/pro_access.dart';
 import '../theme/app_theme.dart';
 import 'ai_result_view.dart';
 import 'health/health_view.dart';
 import 'create_join_view.dart';
 import 'manage_household_view.dart';
+import 'pro_view.dart';
 import 'schedule_view.dart';
 import 'today_view.dart';
 import 'widgets/common.dart';
@@ -184,7 +188,7 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => _showAiDialog(context),
+        onTap: () => _startAi(context),
         customBorder: const CircleBorder(),
         child: Container(
           width: 60,
@@ -211,7 +215,27 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
     );
   }
 
+  /// The AI parser is metered: the free tier gets a few parses a month so the
+  /// feature can be tried, and Pro raises the ceiling. The check runs before
+  /// the dialog opens so nobody types out a plan only to be told it costs money.
+  Future<void> _startAi(BuildContext context) async {
+    final access = context.read<ProAccess>();
+    final language = context.read<AppLanguageStore>().language;
+    if (!access.canUseAi) {
+      await showProPaywall(context, reason: L10n.text(
+          language,
+          'You have used this month\u2019s free AI entries. Pro raises the limit.',
+          '今月の無料AI入力を使い切りました。Proで上限が増えます。',
+          '本月的免费 AI 录入已用完，升级 Pro 可提升上限。',
+          '이번 달 무료 AI 입력을 모두 사용했습니다. Pro로 한도를 늘리세요.',
+        ));
+      return;
+    }
+    await _showAiDialog(context);
+  }
+
   Future<void> _showAiDialog(BuildContext context) async {
+    final access = context.read<ProAccess>();
     final language = context.read<AppLanguageStore>().language;
     final controller = TextEditingController();
     final text = await showDialog<String>(
@@ -219,20 +243,40 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
       builder: (dialogContext) => AlertDialog(
         title: Text(L10n.text(language, 'AI assistant', 'AIアシスタント', 'AI 助手',
             'AI 어시스턴트')),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 8,
-          minLines: 4,
-          decoration: petFieldDecoration(
-            hintText: L10n.text(
-              language,
-              'Describe your pet care plan…',
-              'ペットのケアを入力…',
-              '输入宠物护理计划…',
-              '반려동물 케어 계획을 입력…',
+        // Free users need to see the meter before they spend a parse on it.
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!access.isPro) ...[
+              Text(
+                L10n.text(
+                  language,
+                  '${access.aiParsesLeft} of ${access.aiParseLimit} free entries left this month',
+                  '今月の無料入力は残り${access.aiParsesLeft}/${access.aiParseLimit}回',
+                  '本月免费录入剩余 ${access.aiParsesLeft}/${access.aiParseLimit} 次',
+                  '이번 달 무료 입력 ${access.aiParsesLeft}/${access.aiParseLimit}회 남음',
+                ),
+                style: const TextStyle(fontSize: 12, color: PawColors.muted),
+              ),
+              const SizedBox(height: 10),
+            ],
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 8,
+              minLines: 4,
+              decoration: petFieldDecoration(
+                hintText: L10n.text(
+                  language,
+                  'Describe your pet care plan…',
+                  'ペットのケアを入力…',
+                  '输入宠物护理计划…',
+                  '반려동물 케어 계획을 입력…',
+                ),
+              ),
             ),
-          ),
+          ],
         ),
         actions: [
           TextButton(
@@ -262,6 +306,9 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
     final pets = context.read<CareStore>().household?.pets ?? const <Pet>[];
     try {
       final result = await AiService.instance.parseInstruction(trimmed, pets);
+      // Count the parse only once the model actually answered, so a failed
+      // call does not eat the user's quota.
+      unawaited(access.recordAiParse());
       if (!context.mounted) return;
       Navigator.of(context).pop(); // close loading
       Navigator.of(context).push(

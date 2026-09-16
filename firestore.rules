@@ -29,6 +29,20 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/households/$(householdId)/members/$(request.auth.uid)).data.role == 'owner';
     }
 
+    // Pro state for a household, mirrored from RevenueCat by
+    // exports.revenuecatWebhook (functions/index.js). The doc is written by
+    // the Admin SDK only; clients can read it but never write it.
+    //
+    // `legacy` is set by scripts/backfill_legacy_pro.js for households that
+    // existed before the paywall, so they keep what they already had. A
+    // household with no pro doc at all is simply not Pro — exists() is checked
+    // first so the missing doc reads false instead of failing the rule.
+    function proActive(householdId) {
+      return exists(/databases/$(database)/documents/households/$(householdId)/private/pro)
+        && (get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('active', false) == true
+            || get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('legacy', false) == true);
+    }
+
     function validHousehold(data) {
       return data.name is string
         && data.name.size() > 0
@@ -85,6 +99,23 @@ service cloud.firestore {
         && data.revision is int;
     }
 
+    // Attachments are a Pro feature. A record with no attachments — or one
+    // whose `attachments` key is absent or null — is always writable, so the
+    // free tier keeps full text records and only file uploads need Pro.
+    function attachmentsPermitted(householdId, data) {
+      return !('attachments' in data)
+        || data.attachments == null
+        || data.attachments.size() == 0
+        || proActive(householdId);
+    }
+
+    // Per-count limits (how many medication courses may be active at once,
+    // how many pets a household may hold) are enforced client-side: Rules
+    // cannot aggregate across documents, so there is no way to count a
+    // collection here. The paywall gates that Rules *can* enforce are the
+    // per-document ones below (attachments) plus the write-nobody entitlement
+    // documents.
+
     // The exact-link holder may claim an active invitation once; the same
     // transaction must create their pending join request.
     function validPendingJoin(data, caregiverId, householdId) {
@@ -113,6 +144,48 @@ service cloud.firestore {
 
     match /{path=**}/joinRequests/{caregiverId} {
       allow list: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ---------------------------------------------------------------------
+    // Subscription entitlements (RevenueCat)
+    //
+    // Written only by exports.revenuecatWebhook with the Admin SDK. A client
+    // may read its own document to show subscription state, and may never
+    // write one — that is what keeps Pro unforgeable from the app.
+    // ---------------------------------------------------------------------
+    match /entitlements/{uid} {
+      allow get: if signedIn() && uid == request.auth.uid;
+      allow list, write: if false;
+    }
+
+    // ---------------------------------------------------------------------
+    // AI parse quota
+    //
+    // A client-written monthly counter. The rules make it monotonic: a caller
+    // may only increment the current month by one, or start a new month at
+    // one, so the free allowance cannot be reset mid-month by rewriting the
+    // document.
+    // ---------------------------------------------------------------------
+    match /aiUsage/{uid} {
+      allow get: if signedIn() && uid == request.auth.uid;
+      allow list: if false;
+
+      allow create: if signedIn()
+        && uid == request.auth.uid
+        && request.resource.data.count == 1
+        && request.resource.data.month is string
+        && request.resource.data.month.matches('^[0-9]{4}-[0-9]{2}$');
+
+      allow update: if signedIn()
+        && uid == request.auth.uid
+        && request.resource.data.month is string
+        && request.resource.data.month.matches('^[0-9]{4}-[0-9]{2}$')
+        && ((request.resource.data.month == resource.data.month
+             && request.resource.data.count == resource.data.count + 1)
+            || (request.resource.data.month != resource.data.month
+                && request.resource.data.count == 1));
+
+      allow delete: if false;
     }
 
     // ---------------------------------------------------------------------
@@ -183,6 +256,13 @@ service cloud.firestore {
             ('ownerID' in request.resource.data &&
              'ownerID' in resource.data &&
              request.resource.data.ownerID == resource.data.ownerID));
+
+      // Household-private backend state (currently only `pro`). Members may
+      // read it; nothing writes it from a client.
+      match /private/{docId} {
+        allow read: if isMember(householdId);
+        allow write: if false;
+      }
 
       match /members/{caregiverId} {
         allow get: if isMember(householdId) ||
@@ -276,8 +356,11 @@ service cloud.firestore {
 
       match /healthRecords/{recordId} {
         allow read: if isMember(householdId);
+        // Attaching files (lab sheets, prescriptions, wound photos) is a Pro
+        // feature; everything else about a record stays free.
         allow create, update: if isMember(householdId)
-          && validHealthRecord(request.resource.data);
+          && validHealthRecord(request.resource.data)
+          && attachmentsPermitted(householdId, request.resource.data);
         allow delete: if isMember(householdId);
       }
     }

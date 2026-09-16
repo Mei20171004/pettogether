@@ -28,20 +28,37 @@ class AuthService {
     return result.user;
   }
 
+  bool _googleInitialized = false;
+
+  Future<GoogleSignIn> _googleSignIn() async {
+    final google = GoogleSignIn.instance;
+    if (!_googleInitialized) {
+      await google.initialize();
+      _googleInitialized = true;
+    }
+    return google;
+  }
+
   Future<User?> signInWithGoogle() async {
-    final googleUser = await GoogleSignIn().signIn();
-    if (googleUser == null) return null;
-    final googleAuth = await googleUser.authentication;
+    final google = await _googleSignIn();
+    final GoogleSignInAccount googleUser;
+    try {
+      googleUser = await google.authenticate();
+    } on GoogleSignInException catch (e) {
+      // User dismissed the sign-in sheet.
+      if (e.code == GoogleSignInExceptionCode.canceled) return null;
+      rethrow;
+    }
     final credential = GoogleAuthProvider.credential(
-      accessToken: googleAuth.accessToken,
-      idToken: googleAuth.idToken,
+      idToken: googleUser.authentication.idToken,
     );
     final result = await _auth.signInWithCredential(credential);
     return result.user;
   }
 
   Future<void> signOut() async {
-    await GoogleSignIn().signOut();
+    final google = await _googleSignIn();
+    await google.signOut();
     await _auth.signOut();
   }
 }

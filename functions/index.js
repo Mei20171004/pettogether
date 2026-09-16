@@ -7,10 +7,13 @@
 // format `<routineID>_yyyy-MM-dd`.
 const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onRequest } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
+const crypto = require("crypto");
 
 initializeApp();
 
@@ -21,6 +24,42 @@ const invalidTokenErrors = new Set([
   "messaging/invalid-registration-token",
   "messaging/registration-token-not-registered",
 ]);
+
+/// The shared secret RevenueCat sends verbatim in the `Authorization` header
+/// of every webhook call. Set it with
+/// `firebase functions:secrets:set REVENUECAT_WEBHOOK_SECRET`.
+const revenuecatWebhookSecret = defineSecret("REVENUECAT_WEBHOOK_SECRET");
+
+/// Only this RevenueCat entitlement unlocks Pro. Events that carry a
+/// non-empty `entitlement_ids` without it belong to some other product.
+const proEntitlementId = "pro";
+
+/// Event types that grant access. `expiration_at_ms`, when present, still has
+/// to be in the future.
+const grantingEventTypes = new Set([
+  "INITIAL_PURCHASE",
+  "RENEWAL",
+  "PRODUCT_CHANGE",
+  "UNCANCELLATION",
+  "NON_RENEWING_PURCHASE",
+  "SUBSCRIPTION_EXTENDED",
+  "TEMPORARY_ENTITLEMENT_GRANT",
+]);
+
+/// Event types that revoke access — but only once the paid period is over.
+/// CANCELLATION means "will not renew", not "lost access now".
+const revokingEventTypes = new Set([
+  "CANCELLATION",
+  "EXPIRATION",
+  "SUBSCRIPTION_PAUSED",
+  "REFUND",
+  "BILLING_ISSUE",
+]);
+
+/// Deliberately ignored: TRANSFER moves an entitlement between anonymous ids
+/// (both sides are recomputed by the RENEWAL/EXPIRATION that follows) and TEST
+/// is the dashboard's "send test event" button.
+const ignoredEventTypes = new Set(["TRANSFER", "TEST"]);
 
 exports.notifyTaskChange = onDocumentWritten(
   {
@@ -207,6 +246,241 @@ exports.sendHealthDueReminders = onSchedule(
     }
   },
 );
+
+/// RevenueCat server-to-server webhook.
+///
+/// The contract, end to end:
+///   * RevenueCat POSTs `{ "event": { ... } }` with the shared secret in the
+///     `Authorization` header. `event.app_user_id` is the Firebase uid, which
+///     the client sets via `Purchases.logIn(uid)`.
+///   * This function is the ONLY writer of `entitlements/{uid}` and of
+///     `households/{householdId}/private/pro`; Security Rules deny both to
+///     every client, so purchase state can never be forged from the app.
+///   * `entitlements/{uid}` is the per-user truth. The household mirror is
+///     derived from it: a household is Pro when ANY of its members is, which
+///     is what lets one paying caregiver cover the whole family. `sponsorUid`
+///     records who is paying so the UI can say so.
+///   * The mirror is written with merge because `legacy` on that doc belongs
+///     to scripts/backfill_legacy_pro.js and must survive every webhook write.
+///
+/// Anything we deliberately skip answers 200 so RevenueCat stops retrying it;
+/// only a failed Firestore write answers 500 and earns a retry.
+exports.revenuecatWebhook = onRequest(
+  {
+    region,
+    secrets: [revenuecatWebhookSecret],
+    maxInstances: 10,
+    cors: false,
+    // RevenueCat calls this from its own servers, so Google's IAM check has to
+    // be open; the Authorization secret above is what actually authenticates.
+    invoker: "public",
+  },
+  async (request, response) => {
+    if (request.method !== "POST") {
+      response.status(405).send("Method Not Allowed");
+      return;
+    }
+    if (!authorizedWebhook(request.get("Authorization"))) {
+      // Nothing from the request is logged here: the header is the secret.
+      logger.warn("RevenueCat webhook rejected: bad authorization");
+      response.status(401).send("Unauthorized");
+      return;
+    }
+
+    const event = webhookEvent(request.body);
+    if (!event) {
+      logger.warn("RevenueCat webhook ignored: no event payload");
+      response.status(200).send("ignored");
+      return;
+    }
+
+    const eventType = typeof event.type === "string" ? event.type : "";
+    const uid = typeof event.app_user_id === "string" ? event.app_user_id.trim() : "";
+    if (uid.length === 0) {
+      logger.warn("RevenueCat webhook ignored: missing app_user_id", { eventType });
+      response.status(200).send("ignored");
+      return;
+    }
+    // An anonymous id means the purchase happened before the app called
+    // Purchases.logIn(uid). The TRANSFER/RENEWAL that follows the login
+    // carries the real uid, so there is nothing to store yet.
+    if (uid.startsWith("$RCAnonymousID:")) {
+      logger.info("RevenueCat webhook ignored: anonymous app_user_id", { eventType });
+      response.status(200).send("ignored");
+      return;
+    }
+    if (ignoredEventTypes.has(eventType)) {
+      logger.info("RevenueCat webhook ignored by type", { eventType, uid });
+      response.status(200).send("ignored");
+      return;
+    }
+
+    const entitlementIds = Array.isArray(event.entitlement_ids)
+      ? event.entitlement_ids.filter((id) => typeof id === "string")
+      : null;
+    if (entitlementIds && entitlementIds.length > 0 &&
+        !entitlementIds.includes(proEntitlementId)) {
+      logger.info("RevenueCat webhook ignored: not the pro entitlement", {
+        eventType,
+        uid,
+        entitlementIds,
+      });
+      response.status(200).send("ignored");
+      return;
+    }
+
+    const expiresAt = expirationTimestamp(event.expiration_at_ms);
+    const active = entitlementActive(eventType, expiresAt);
+    if (active === null) {
+      logger.info("RevenueCat webhook ignored: unhandled type", { eventType, uid });
+      response.status(200).send("ignored");
+      return;
+    }
+
+    try {
+      await db.collection("entitlements").doc(uid).set(
+        {
+          active,
+          expiresAt,
+          productId: typeof event.product_id === "string" ? event.product_id : null,
+          store: typeof event.store === "string" ? event.store : null,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      const households = await recomputeHouseholdsForMember(uid);
+      logger.info("RevenueCat entitlement stored", {
+        eventType,
+        uid,
+        active,
+        households,
+      });
+      response.status(200).send("ok");
+    } catch (error) {
+      logger.error("RevenueCat webhook write failed", {
+        eventType,
+        uid,
+        message: error.message,
+      });
+      response.status(500).send("Internal Server Error");
+    }
+  },
+);
+
+/// Constant-time comparison of the `Authorization` header with the configured
+/// secret. Buffers of different lengths are rejected before timingSafeEqual,
+/// which throws on a length mismatch.
+function authorizedWebhook(headerValue) {
+  const provided = Buffer.from(
+    typeof headerValue === "string" ? headerValue : "",
+    "utf8",
+  );
+  const expected = Buffer.from(revenuecatWebhookSecret.value() || "", "utf8");
+  if (expected.length === 0 || provided.length !== expected.length) return false;
+  return crypto.timingSafeEqual(provided, expected);
+}
+
+/// RevenueCat posts JSON, but a misconfigured content type arrives as a raw
+/// body, so parse defensively rather than throwing inside the handler.
+function webhookEvent(body) {
+  let payload = body;
+  if (Buffer.isBuffer(payload)) payload = payload.toString("utf8");
+  if (typeof payload === "string") {
+    if (payload.length === 0) return null;
+    try {
+      payload = JSON.parse(payload);
+    } catch (_) {
+      return null;
+    }
+  }
+  const event = payload?.event;
+  return event && typeof event === "object" ? event : null;
+}
+
+function expirationTimestamp(value) {
+  const millis = Number(value);
+  if (!Number.isFinite(millis) || millis <= 0) return null;
+  return Timestamp.fromMillis(millis);
+}
+
+/// true = grant, false = revoke, null = an event type we do not act on.
+function entitlementActive(eventType, expiresAt) {
+  const expired = expiresAt !== null && expiresAt.toMillis() <= Date.now();
+  if (grantingEventTypes.has(eventType)) return !expired;
+  // A cancellation or billing issue leaves the paid period intact; access
+  // only ends once that period has passed.
+  if (revokingEventTypes.has(eventType)) return !expired && expiresAt !== null;
+  return null;
+}
+
+/// Recomputes the Pro mirror of every household the user belongs to and
+/// returns how many were touched.
+async function recomputeHouseholdsForMember(uid) {
+  const memberships = await db.collectionGroup("members").where("id", "==", uid).get();
+  const households = new Map();
+  for (const membership of memberships.docs) {
+    const householdReference = membership.ref.parent.parent;
+    if (householdReference) households.set(householdReference.path, householdReference);
+  }
+  for (const householdReference of households.values()) {
+    await recomputeHouseholdPro(householdReference);
+  }
+  return households.size;
+}
+
+/// A household is Pro when any of its members has an active entitlement. The
+/// mirror exists so Security Rules and the UI can answer "is this household
+/// Pro?" with a single document read instead of a fan-out over members.
+async function recomputeHouseholdPro(householdReference) {
+  const members = await householdReference.collection("members").get();
+  const memberIds = [];
+  for (const member of members.docs) {
+    const id = typeof member.data().id === "string" && member.data().id.length > 0
+      ? member.data().id
+      : member.id;
+    if (!memberIds.includes(id)) memberIds.push(id);
+  }
+
+  let active = false;
+  let sponsorUid = null;
+  let expiresAt = null;
+  // A non-expiring active entitlement (lifetime, or a grant with no
+  // expiration) outranks every dated one, so the mirror keeps a null expiry.
+  let unbounded = false;
+
+  for (const group of chunks(memberIds, 300)) {
+    if (group.length === 0) continue;
+    const entitlements = await db.getAll(
+      ...group.map((id) => db.collection("entitlements").doc(id)),
+    );
+    for (const entitlement of entitlements) {
+      if (!entitlement.exists || entitlement.data().active !== true) continue;
+      if (!active) {
+        active = true;
+        sponsorUid = entitlement.id;
+      }
+      const memberExpiry = entitlement.data().expiresAt || null;
+      if (!memberExpiry) {
+        unbounded = true;
+      } else if (!unbounded &&
+          (expiresAt === null || memberExpiry.toMillis() > expiresAt.toMillis())) {
+        expiresAt = memberExpiry;
+      }
+    }
+  }
+  if (unbounded) expiresAt = null;
+
+  // Merge: `legacy` is owned by scripts/backfill_legacy_pro.js.
+  await householdReference.collection("private").doc("pro").set(
+    {
+      active,
+      sponsorUid,
+      expiresAt,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
 
 function taskNotification(before, after) {
   if (!before && !after) return null;

@@ -6,8 +6,10 @@ import '../models/ai_plan.dart';
 import '../models/care_catalog.dart';
 import '../models/models.dart';
 import '../store/care_store.dart';
+import '../store/pro_access.dart';
 import '../theme/app_theme.dart';
 import 'widgets/common.dart';
+import 'pro_view.dart';
 
 /// Shows the tasks the AI parsed from a free-text instruction, and confirms
 /// them into the household in one batch.
@@ -23,7 +25,22 @@ class AiResultView extends StatefulWidget {
 class _AiResultViewState extends State<AiResultView> {
   bool _saving = false;
 
+  /// Second line of defence: this screen is only reachable through the gated AI
+  /// button, but if the quota was already exceeded the write is refused here
+  /// too rather than trusting the caller.
   Future<void> _confirm(CareStore store) async {
+    final access = context.read<ProAccess>();
+    if (!access.isPro && access.aiParsesUsed > access.aiParseLimit) {
+      final language = context.read<AppLanguageStore>().language;
+      await showProPaywall(context, reason: L10n.text(
+          language,
+          'You have used this month\u2019s free AI entries. Pro raises the limit.',
+          '今月の無料AI入力を使い切りました。Proで上限が増えます。',
+          '本月的免费 AI 录入已用完，升级 Pro 可提升上限。',
+          '이번 달 무료 AI 입력을 모두 사용했습니다. Pro로 한도를 늘리세요.',
+        ));
+      return;
+    }
     setState(() => _saving = true);
     final pets = store.household?.pets ?? const <Pet>[];
 

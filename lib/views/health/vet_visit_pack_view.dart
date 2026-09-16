@@ -6,8 +6,10 @@ import '../../l10n/l10n.dart';
 import '../../models/models.dart';
 import '../../services/vet_report_pdf.dart';
 import '../../store/care_store.dart';
+import '../../store/pro_access.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/common.dart';
+import '../pro_view.dart';
 import '../../models/vet_visit_pack.dart';
 
 /// Everything worth telling a vet about one pet, on one screen, with an export
@@ -263,7 +265,22 @@ class _VetVisitPackViewState extends State<VetVisitPackView> {
     );
   }
 
+  /// The pack is always free to read on screen; only handing it over as a PDF
+  /// is paid, so the value is visible before the price is.
   Future<void> _export(VetVisitPack pack, AppLanguage language) async {
+    if (!context.read<ProAccess>().canExportVetPack) {
+      await showProPaywall(
+        context,
+        reason: L10n.text(
+          language,
+          'Exporting the vet visit pack as a PDF is a Pro feature.',
+          '受診パックのPDF書き出しはPro機能です。',
+          '导出兽医就诊包 PDF 是 Pro 功能。',
+          '진료 패키지 PDF 내보내기는 Pro 기능입니다.',
+        ),
+      );
+      return;
+    }
     setState(() => _exporting = true);
     try {
       await VetReportPdf.share(pack: pack, language: language);

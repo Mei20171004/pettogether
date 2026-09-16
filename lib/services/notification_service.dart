@@ -258,7 +258,9 @@ class NotificationService {
   ) => switch (settings.authorizationStatus) {
     AuthorizationStatus.notDetermined =>
       NotificationPermissionState.notDetermined,
-    AuthorizationStatus.denied => NotificationPermissionState.denied,
+    AuthorizationStatus.denied ||
+    AuthorizationStatus.deniedPermanently =>
+      NotificationPermissionState.denied,
     AuthorizationStatus.authorized => NotificationPermissionState.authorized,
     AuthorizationStatus.provisional => NotificationPermissionState.provisional,
   };

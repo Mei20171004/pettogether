@@ -9,6 +9,17 @@ service firebase.storage {
         && firestore.exists(/databases/(default)/documents/households/$(householdId)/members/$(request.auth.uid));
     }
 
+    // 该家庭是否拥有 Pro（跨服务读取 Firestore 的家庭订阅镜像文档，
+    // 由 exports.revenuecatWebhook 写入；legacy 为付费墙上线前的老家庭）。
+    // 先用 exists() 判断，文档缺失时按“未订阅”处理而不是报错。
+    function proActive(householdId) {
+      return firestore.exists(/databases/(default)/documents/households/$(householdId)/private/pro)
+        && ((('active' in firestore.get(/databases/(default)/documents/households/$(householdId)/private/pro).data)
+             && firestore.get(/databases/(default)/documents/households/$(householdId)/private/pro).data.active == true)
+            || (('legacy' in firestore.get(/databases/(default)/documents/households/$(householdId)/private/pro).data)
+                && firestore.get(/databases/(default)/documents/households/$(householdId)/private/pro).data.legacy == true));
+    }
+
     // 宠物照片路径：households/{家庭ID}/pets/{宠物ID}.jpg
     match /households/{householdId}/pets/{fileName} {
       allow read, write: if isMember(householdId);
@@ -16,9 +27,11 @@ service firebase.storage {
 
     // 病历附件路径：households/{家庭ID}/records/{病历ID}/{文件名}
     // 化验单、处方、患处照片等，只有该家庭成员可读写。
+    // 上传属于 Pro 功能；读取始终开放，已有照片在订阅到期后仍能查看。
     match /households/{householdId}/records/{recordId}/{fileName} {
       allow read: if isMember(householdId);
       allow write: if isMember(householdId)
+        && proActive(householdId)
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }

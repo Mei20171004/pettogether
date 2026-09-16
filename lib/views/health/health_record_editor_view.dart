@@ -10,9 +10,11 @@ import '../../models/care_catalog.dart';
 import '../../models/health.dart';
 import '../../models/models.dart';
 import '../../store/care_store.dart';
+import '../../store/pro_access.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/id.dart';
 import '../widgets/common.dart';
+import '../pro_view.dart';
 
 /// Creates or edits one medical record.
 ///
@@ -593,7 +595,23 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
     setState(() => _nextDueAt = picked);
   }
 
+  /// Photos are the one medical feature with a real running cost (Storage
+  /// bytes, plus egress every time somebody opens the record), so they are the
+  /// health limit that Security Rules also enforce. Text records stay free.
   Future<void> _pickPhoto(CareStore store, AppLanguage language) async {
+    if (!context.read<ProAccess>().canAttachPhotos) {
+      await showProPaywall(
+        context,
+        reason: L10n.text(
+          language,
+          'Photos on medical records are a Pro feature.',
+          '医療記録への写真添付はPro機能です。',
+          '为医疗记录添加照片是 Pro 功能。',
+          '진료 기록 사진 첨부는 Pro 기능입니다.',
+        ),
+      );
+      return;
+    }
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: Colors.white,

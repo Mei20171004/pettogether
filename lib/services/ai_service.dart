@@ -11,7 +11,14 @@ class AiService {
   AiService._();
   static final AiService instance = AiService._();
 
+  /// Longest instruction accepted. Anything past this is the user pasting a
+  /// document, which costs tokens without improving the parse.
+  static const int maxInstructionLength = 1000;
+
   Future<AiParseResult> parseInstruction(String text, List<Pet> pets) async {
+    final instruction = text.length > maxInstructionLength
+        ? text.substring(0, maxInstructionLength)
+        : text;
     final googleAI = FirebaseAI.googleAI();
     final model = googleAI.generativeModel(
       model: 'gemini-flash-latest',
@@ -19,6 +26,9 @@ class AiService {
       generationConfig: GenerationConfig(
         responseMimeType: 'application/json',
         responseSchema: _schema,
+        // A parsed care plan is small. Capping output bounds the cost of a
+        // single call and of a prompt that tries to make the model ramble.
+        maxOutputTokens: 2048,
       ),
     );
 
@@ -27,7 +37,9 @@ class AiService {
         : pets.map((p) => '- ${p.name} (type: ${p.type.rawValue})').join('\n');
 
     final response = await model.generateContent([
-      Content.text('Existing pets:\n$petContext\n\nUser instruction:\n$text'),
+      Content.text(
+        'Existing pets:\n$petContext\n\nUser instruction:\n$instruction',
+      ),
     ]);
 
     final raw = (response.text ?? '').trim();
@@ -42,8 +54,7 @@ class AiService {
   }
 
   String _systemPrompt() {
-    final categories =
-        CareCategory.builtIns.map((c) => c.id).toList();
+    final categories = CareCategory.builtIns.map((c) => c.id).toList();
     return '''
 You are a pet-care scheduling assistant. Parse the user's instruction and extract concrete care tasks for their pets.
 
@@ -86,10 +97,7 @@ Rules:
               ],
             ),
             'interval': Schema.integer(nullable: true),
-            'weekdays': Schema.array(
-              items: Schema.integer(),
-              nullable: true,
-            ),
+            'weekdays': Schema.array(items: Schema.integer(), nullable: true),
             'hour': Schema.integer(),
             'minute': Schema.integer(),
             'date': Schema.string(nullable: true),
@@ -98,10 +106,7 @@ Rules:
       ),
       'petWeights': Schema.array(
         items: Schema.object(
-          properties: {
-            'petName': Schema.string(),
-            'weightKg': Schema.number(),
-          },
+          properties: {'petName': Schema.string(), 'weightKg': Schema.number()},
         ),
         nullable: true,
       ),
