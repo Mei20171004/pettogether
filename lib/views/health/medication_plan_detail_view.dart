@@ -37,7 +37,7 @@ class _MedicationPlanDetailViewState extends State<MedicationPlanDetailView> {
       // The course was deleted, possibly on another device.
       return Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(backgroundColor: Colors.transparent),
+        appBar: AppBar(),
         body: Stack(
           children: [
             const PetScreenBackground(),
@@ -58,7 +58,6 @@ class _MedicationPlanDetailViewState extends State<MedicationPlanDetailView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(plan.name),
         actions: [
           PopupMenuButton<String>(

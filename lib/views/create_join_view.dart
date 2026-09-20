@@ -95,7 +95,6 @@ class _CreateJoinViewState extends State<CreateJoinView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         actions: [
           PopupMenuButton<AppLanguage>(
             icon: const Icon(Icons.language, color: PawColors.purple),

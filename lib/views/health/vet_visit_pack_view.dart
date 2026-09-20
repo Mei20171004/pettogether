@@ -48,7 +48,6 @@ class _VetVisitPackViewState extends State<VetVisitPackView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(L10n.text(
             language, 'Vet visit pack', '通院用まとめ', '就诊资料包', '진료용 자료')),
       ),

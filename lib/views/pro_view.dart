@@ -257,7 +257,6 @@ class _ProViewState extends State<ProView> {
     return Scaffold(
       backgroundColor: PawColors.cream,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(widget.feature.title(language)),
       ),
       body: Stack(

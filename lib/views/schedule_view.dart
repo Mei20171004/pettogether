@@ -39,7 +39,6 @@ class _ScheduleViewState extends State<ScheduleView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title:
             Text(L10n.text(language, 'Calendar', 'カレンダー', '日历', '캘린더')),
         actions: [

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -25,7 +26,7 @@ class HealthRecordDetailView extends StatelessWidget {
     if (record == null) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(backgroundColor: Colors.transparent),
+        appBar: AppBar(),
         body: Stack(
           children: [
             const PetScreenBackground(),
@@ -48,7 +49,6 @@ class HealthRecordDetailView extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(L10n.healthRecordTypeTitle(language, record.type)),
         actions: [
           PopupMenuButton<String>(
@@ -360,26 +360,30 @@ class _PhotoViewer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-      ),
-      extendBodyBehindAppBar: true,
-      body: Center(
-        child: Hero(
-          tag: attachment.id,
-          child: InteractiveViewer(
-            minScale: 1,
-            maxScale: 5,
-            child: Image.network(
-              attachment.url,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stack) => const Icon(
-                Icons.broken_image_outlined,
-                color: Colors.white54,
-                size: 48,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: petDarkSystemUiOverlayStyle,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          systemOverlayStyle: petDarkSystemUiOverlayStyle,
+        ),
+        extendBodyBehindAppBar: true,
+        body: Center(
+          child: Hero(
+            tag: attachment.id,
+            child: InteractiveViewer(
+              minScale: 1,
+              maxScale: 5,
+              child: Image.network(
+                attachment.url,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stack) => const Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.white54,
+                  size: 48,
+                ),
               ),
             ),
           ),

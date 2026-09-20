@@ -36,7 +36,6 @@ class _HealthViewState extends State<HealthView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(L10n.text(language, 'Health', '健康', '健康', '건강')),
       ),
       body: Stack(

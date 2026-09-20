@@ -87,7 +87,6 @@ class _MedicationCourseEditorViewState
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(
             L10n.text(language, 'Edit course', '服薬を編集', '编辑疗程', '복약 편집')),
       ),

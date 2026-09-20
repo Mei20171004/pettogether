@@ -9,6 +9,7 @@ import '../services/ai_service.dart';
 import '../store/care_store.dart';
 import '../store/pro_access.dart';
 import '../theme/app_theme.dart';
+import 'ai_input_dialog.dart';
 import 'ai_result_view.dart';
 import 'health/health_view.dart';
 import 'create_join_view.dart';
@@ -274,58 +275,13 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
   Future<void> _showAiDialog(BuildContext context) async {
     final access = context.read<ProAccess>();
     final language = context.read<AppLanguageStore>().language;
-    final controller = TextEditingController();
     final text = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          L10n.text(language, 'AI assistant', 'AIアシスタント', 'AI 助手', 'AI 어시스턴트'),
-        ),
-        // Subscribers can see the fair-use balance before spending a parse.
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (access.hasAi) ...[
-              Text(
-                L10n.text(
-                  language,
-                  '${access.aiParsesLeft} of ${access.aiParseLimit} AI entries left this month',
-                  '今月のAI入力は残り${access.aiParsesLeft}/${access.aiParseLimit}回',
-                  '本月 AI 录入剩余 ${access.aiParsesLeft}/${access.aiParseLimit} 次',
-                  '이번 달 AI 입력 ${access.aiParsesLeft}/${access.aiParseLimit}회 남음',
-                ),
-                style: const TextStyle(fontSize: 12, color: PawColors.muted),
-              ),
-              const SizedBox(height: 10),
-            ],
-            TextField(
-              controller: controller,
-              autofocus: true,
-              maxLines: 8,
-              minLines: 4,
-              decoration: petFieldDecoration(
-                hintText: L10n.text(
-                  language,
-                  'Describe your pet care plan…',
-                  'ペットのケアを入力…',
-                  '输入宠物护理计划…',
-                  '반려동물 케어 계획을 입력…',
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(L10n.text(language, 'Cancel', 'キャンセル', '取消', '취소')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: Text(L10n.text(language, 'Parse', '解析', '解析', '분석')),
-          ),
-        ],
+      builder: (_) => AiInputDialog(
+        language: language,
+        aiParsesLeft: access.aiParsesLeft,
+        aiParseLimit: access.aiParseLimit,
+        showBalance: access.hasAi,
       ),
     );
 

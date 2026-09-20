@@ -96,7 +96,6 @@ class _AiResultViewState extends State<AiResultView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(L10n.text(language, 'AI care plan', 'AIケアプラン', 'AI 护理计划',
             'AI 케어 플랜')),
       ),

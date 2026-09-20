@@ -163,6 +163,10 @@ class _PetTogetherAppState extends State<PetTogetherApp> {
         title: 'pettogether',
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(),
+        builder: (context, child) => AnnotatedRegion(
+          value: petSystemUiOverlayStyle,
+          child: child ?? const SizedBox.shrink(),
+        ),
         home: const AuthGate(),
       ),
     );

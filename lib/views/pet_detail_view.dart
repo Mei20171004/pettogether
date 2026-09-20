@@ -43,7 +43,6 @@ class _PetDetailViewState extends State<PetDetailView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(current.name),
       ),
       body: Stack(

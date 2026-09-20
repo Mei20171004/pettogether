@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/health.dart';
 import '../models/models.dart';
@@ -28,6 +29,22 @@ abstract final class PawColors {
   static const Color lilacTint = Color(0xFFF0EBFF);
   static const Color blushTint = Color(0xFFFFF0EF);
 }
+
+const petSystemUiOverlayStyle = SystemUiOverlayStyle(
+  statusBarColor: Colors.white,
+  statusBarIconBrightness: Brightness.dark,
+  statusBarBrightness: Brightness.light,
+  systemNavigationBarColor: Colors.white,
+  systemNavigationBarIconBrightness: Brightness.dark,
+);
+
+const petDarkSystemUiOverlayStyle = SystemUiOverlayStyle(
+  statusBarColor: Colors.black,
+  statusBarIconBrightness: Brightness.light,
+  statusBarBrightness: Brightness.dark,
+  systemNavigationBarColor: Colors.black,
+  systemNavigationBarIconBrightness: Brightness.light,
+);
 
 /// Per-category accent color and icon (Material equivalents of the SF Symbols
 /// used in the SwiftUI original).
@@ -126,11 +143,13 @@ ThemeData buildAppTheme() {
 
   return base.copyWith(
     appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
       foregroundColor: PawColors.ink,
       centerTitle: false,
+      systemOverlayStyle: petSystemUiOverlayStyle,
     ),
   );
 }

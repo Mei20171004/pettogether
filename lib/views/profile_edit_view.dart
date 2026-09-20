@@ -69,7 +69,6 @@ class _ProfileEditViewState extends State<ProfileEditView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(L10n.text(
             language, 'Family profile', '家族プロフィール', '家庭资料', '가족 프로필')),
         leading: IconButton(

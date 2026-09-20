@@ -51,7 +51,6 @@ class _TodayViewState extends State<TodayView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(L10n.text(language, 'Today', '今日', '今天', '오늘')),
         actions: [
           PopupMenuButton<AppLanguage>(

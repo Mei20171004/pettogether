@@ -32,6 +32,10 @@
 	<string>Scan a one-time pettogether household invitation QR code.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose a photo for your pet profile.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Use your voice to describe a pet care plan.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Convert your spoken pet care plan into editable text.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

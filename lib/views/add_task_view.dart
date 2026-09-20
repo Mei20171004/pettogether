@@ -97,7 +97,6 @@ class _AddTaskViewState extends State<AddTaskView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(
             L10n.text(language, 'Add Task', 'ケアを追加', '添加护理', '케어 추가')),
         leading: IconButton(

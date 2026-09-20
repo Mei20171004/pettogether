@@ -30,7 +30,6 @@ class ManageHouseholdView extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(L10n.text(language, 'Family', '家族', '家庭', '가족')),
       ),
       body: Stack(
