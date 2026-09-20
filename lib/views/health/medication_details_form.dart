@@ -7,6 +7,7 @@ import '../../models/health.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/care_calendar.dart';
 import '../widgets/common.dart';
+import '../widgets/pet_time_picker.dart';
 
 /// Everything a medication course needs beyond an ordinary task: what the
 /// medicine is, when each dose is given, and how long the course runs.
@@ -581,9 +582,10 @@ class MedicationDetailsForm extends StatelessWidget {
 
   Future<void> _pickTime(BuildContext context, int index) async {
     final time = controller.timeAt(index);
-    final picked = await showTimePicker(
+    final picked = await showPetTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: time.hour, minute: time.minute),
+      language: language,
     );
     if (picked == null) return;
     controller.setTimeOfDay(index, picked.hour, picked.minute);

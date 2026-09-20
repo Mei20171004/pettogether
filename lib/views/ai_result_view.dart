@@ -30,15 +30,19 @@ class _AiResultViewState extends State<AiResultView> {
   /// too rather than trusting the caller.
   Future<void> _confirm(CareStore store) async {
     final access = context.read<ProAccess>();
-    if (!access.isPro && access.aiParsesUsed > access.aiParseLimit) {
+    if (!access.hasAi) {
       final language = context.read<AppLanguageStore>().language;
-      await showProPaywall(context, reason: L10n.text(
+      await showProPaywall(
+        context,
+        reason: L10n.text(
           language,
-          'You have used this month\u2019s free AI entries. Pro raises the limit.',
-          '今月の無料AI入力を使い切りました。Proで上限が増えます。',
-          '本月的免费 AI 录入已用完，升级 Pro 可提升上限。',
-          '이번 달 무료 AI 입력을 모두 사용했습니다. Pro로 한도를 늘리세요.',
-        ));
+          'AI care entry requires the ¥300/month AI plan.',
+          'AIケア入力には月額300円のAIプランが必要です。',
+          '使用 AI 护理录入需要订阅每月 ¥300 的 AI 功能。',
+          'AI 케어 입력에는 월 ¥300 AI 구독이 필요합니다.',
+        ),
+        feature: ProFeature.ai,
+      );
       return;
     }
     setState(() => _saving = true);

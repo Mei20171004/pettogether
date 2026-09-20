@@ -243,6 +243,40 @@ class MockCareService implements CareService {
   }
 
   @override
+  Future<void> updateTask(CareTask task, String householdID) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    final index = _taskIndex(task.id);
+    final existing = _tasks[index];
+    if (existing.kind != CareTaskKind.oneOff ||
+        existing.status != CareTaskStatus.unclaimed ||
+        existing.revision != task.revision) {
+      throw const CareServiceError(CareServiceErrorType.invalidTransition);
+    }
+    final copy = [..._tasks];
+    copy[index] = task.copyWith(revision: task.revision + 1);
+    _tasks = copy;
+    await _persist();
+    _notifyTasks();
+  }
+
+  @override
+  Future<void> deleteTask(CareTask task, String householdID) async {
+    await _loaded;
+    _validateHousehold(householdID);
+    final index = _taskIndex(task.id);
+    final existing = _tasks[index];
+    if (existing.kind != CareTaskKind.oneOff ||
+        existing.status != CareTaskStatus.unclaimed ||
+        existing.revision != task.revision) {
+      throw const CareServiceError(CareServiceErrorType.invalidTransition);
+    }
+    _tasks = _tasks.where((item) => item.id != task.id).toList();
+    await _persist();
+    _notifyTasks();
+  }
+
+  @override
   Future<void> addRoutine(CareRoutine routine, String householdID) async {
     _validateHousehold(householdID);
     _validateMemberID(routine.createdByID);
@@ -335,6 +369,10 @@ class MockCareService implements CareService {
   @override
   Future<void> removePet(String householdID, String petID) async {
     _validateHousehold(householdID);
+    if (_household.pets.length <= 1 ||
+        !_household.pets.any((pet) => pet.id == petID)) {
+      throw const CareServiceError(CareServiceErrorType.invalidProfile);
+    }
     _household = _household.copyWith(
       pets: _household.pets.where((p) => p.id != petID).toList(),
     );
@@ -572,9 +610,6 @@ class MockCareService implements CareService {
     await _loaded;
     _validateHousehold(householdID);
     _validatedMember(caregiver);
-    if (task.routineID == null) {
-      throw const CareServiceError(CareServiceErrorType.invalidTransition);
-    }
     final existing = _materialize(task);
     final updated = existing.task.copyWith(
       status: CareTaskStatus.skipped,
@@ -595,18 +630,28 @@ class MockCareService implements CareService {
     await _loaded;
     _validateHousehold(householdID);
     _validatedMember(caregiver);
-    if (task.routineID == null) {
-      throw const CareServiceError(CareServiceErrorType.invalidTransition);
-    }
     final index = _taskIndex(task.id);
     if (_tasks[index].status != CareTaskStatus.skipped) {
       throw const CareServiceError(CareServiceErrorType.invalidTransition);
     }
-    // Deleting the override regenerates the occurrence from its routine
-    // (unclaimed).
-    _tasks = _tasks.where((t) => t.id != task.id).toList();
-    await _persist();
-    _notifyTasks();
+    if (task.routineID != null) {
+      // Deleting the override regenerates the occurrence from its routine.
+      _tasks = _tasks.where((t) => t.id != task.id).toList();
+      await _persist();
+      _notifyTasks();
+      return;
+    }
+    if (task.kind != CareTaskKind.oneOff) {
+      throw const CareServiceError(CareServiceErrorType.invalidTransition);
+    }
+    _replaceOrAppend(
+      _tasks[index].copyWith(
+        status: CareTaskStatus.unclaimed,
+        clearSkipReason: true,
+        revision: _tasks[index].revision + 1,
+      ),
+      index,
+    );
   }
 
   // -------------------------------------------------------------------------

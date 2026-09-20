@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/care_catalog.dart';
 import '../models/health.dart';
+import '../models/invitation_link.dart';
 import '../models/models.dart';
 import '../services/care_service.dart';
 import '../services/firebase_care_service.dart';
@@ -60,6 +61,7 @@ class CareStore extends ChangeNotifier {
 
   int _sessionRequestGeneration = 0;
   bool _didAttemptSessionRestore = false;
+  Future<void>? _sessionRestoreFuture;
 
   // -------------------------------------------------------------------------
   // Getters
@@ -403,7 +405,10 @@ class CareStore extends ChangeNotifier {
   // Session
   // -------------------------------------------------------------------------
 
-  Future<void> restoreSession() async {
+  Future<void> restoreSession() =>
+      _sessionRestoreFuture ??= _restoreSessionOnce();
+
+  Future<void> _restoreSessionOnce() async {
     if (_didAttemptSessionRestore) return;
     _didAttemptSessionRestore = true;
     await _restoreSessionIfAvailable();
@@ -443,32 +448,37 @@ class CareStore extends ChangeNotifier {
 
   /// Parses an invitation value (a deep link or a bare invitation id) and
   /// shows a preview of the destination household.
-  Future<void> previewInvitation(String value) async {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return;
-    await _runLoading(() async {
-      _invitationPreview = await _service.loadInvitation(_invitationID(trimmed));
-    });
-  }
-
-  static String _invitationID(String value) {
-    final uri = Uri.tryParse(value);
-    if (uri != null &&
-        uri.scheme == 'pettogether' &&
-        uri.host == 'invite' &&
-        uri.pathSegments.isNotEmpty) {
-      return uri.pathSegments.last;
+  Future<bool> previewInvitation(String value) async {
+    final link = InvitationLink.tryParse(value);
+    if (link == null) {
+      _setError(
+          const CareServiceError(CareServiceErrorType.invalidInvitationLink));
+      return false;
     }
-    return value;
+    final succeeded = await _runLoading<bool>(() async {
+      final invitation = await _service.loadInvitation(link.invitationId);
+      if (link.householdId != null &&
+          invitation.householdId != link.householdId) {
+        throw const CareServiceError(
+            CareServiceErrorType.invalidInvitationLink);
+      }
+      _invitationPreview = invitation;
+      return true;
+    });
+    return succeeded ?? false;
   }
 
-  Future<void> handleInvitationLink(Uri uri) async {
-    if (uri.scheme != 'pettogether' || uri.host != 'invite') return;
+  Future<bool> handleInvitationLink(Uri uri) async {
+    if (InvitationLink.tryParseUri(uri) == null) {
+      _setError(
+          const CareServiceError(CareServiceErrorType.invalidInvitationLink));
+      return false;
+    }
     if (hasHousehold) {
       _setError(const CareServiceError(CareServiceErrorType.alreadyMember));
-      return;
+      return false;
     }
-    await previewInvitation(uri.toString());
+    return previewInvitation(uri.toString());
   }
 
   void clearInvitationPreview() {
@@ -593,11 +603,11 @@ class CareStore extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------------------
-  // Skip / restore a single routine occurrence
+  // Skip / restore a task
   // -------------------------------------------------------------------------
 
-  /// Skips a single occurrence. Medication doses pass a [reason] — a missed
-  /// dose is only useful to a vet with one attached.
+  /// Skips a task. Medication doses pass a [reason] — a missed dose is only
+  /// useful to a vet with one attached.
   Future<bool> skipTaskOccurrence(
     CareTask task, {
     MedicationSkipReason? reason,
@@ -771,6 +781,95 @@ class CareStore extends ChangeNotifier {
     );
   }
 
+  /// Updates an unclaimed ordinary task from Today. For a routine occurrence,
+  /// the backing routine is changed so the new details apply going forward.
+  Future<bool> updateTaskDetails(
+    CareTask task, {
+    required String title,
+    required DateTime dueTime,
+    required List<String> petIds,
+  }) async {
+    final household = _household;
+    final trimmedTitle = title.trim();
+    if (household == null ||
+        trimmedTitle.isEmpty ||
+        trimmedTitle.length > 120 ||
+        task.status != CareTaskStatus.unclaimed ||
+        task.assignmentRequest != null ||
+        planForTask(task) != null) {
+      _errorMessage = const CareServiceError(
+        CareServiceErrorType.invalidTransition,
+      ).message;
+      notifyListeners();
+      return false;
+    }
+
+    final validPetIds = petIds
+        .where((id) => household.pets.any((pet) => pet.id == id))
+        .toSet()
+        .toList();
+    final singlePetID = validPetIds.length == 1 ? validPetIds.first : null;
+
+    return _performTaskMutation(task.id, () async {
+      final routine = routineForTask(task);
+      if (routine != null) {
+        await _service.updateRoutine(
+          routine.copyWith(
+            title: trimmedTitle,
+            hour: dueTime.hour,
+            minute: dueTime.minute,
+            petID: singlePetID,
+            petIds: validPetIds,
+            clearPetID: singlePetID == null,
+          ),
+          household.id,
+        );
+        return;
+      }
+      if (task.kind != CareTaskKind.oneOff) {
+        throw const CareServiceError(CareServiceErrorType.taskNotFound);
+      }
+      await _service.updateTask(
+        task.copyWith(
+          title: trimmedTitle,
+          dueTime: dueTime,
+          petID: singlePetID,
+          petIds: validPetIds,
+          clearPetID: singlePetID == null,
+        ),
+        household.id,
+      );
+    });
+  }
+
+  /// Deletes an unclaimed ordinary task from Today. Deleting a routine
+  /// occurrence removes its backing schedule rather than only today's copy.
+  Future<bool> deleteTask(CareTask task) async {
+    final household = _household;
+    if (household == null ||
+        task.status != CareTaskStatus.unclaimed ||
+        task.assignmentRequest != null ||
+        planForTask(task) != null) {
+      _errorMessage = const CareServiceError(
+        CareServiceErrorType.invalidTransition,
+      ).message;
+      notifyListeners();
+      return false;
+    }
+
+    return _performTaskMutation(task.id, () async {
+      final routine = routineForTask(task);
+      if (routine != null) {
+        await _service.deleteRoutine(routine.id, household.id);
+        return;
+      }
+      if (task.kind != CareTaskKind.oneOff) {
+        throw const CareServiceError(CareServiceErrorType.taskNotFound);
+      }
+      await _service.deleteTask(task, household.id);
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Profile
   // -------------------------------------------------------------------------
@@ -897,7 +996,15 @@ class CareStore extends ChangeNotifier {
 
   Future<bool> removePet(String petID) async {
     final household = _household;
-    if (household == null) return false;
+    if (household == null ||
+        household.pets.length <= 1 ||
+        !household.pets.any((pet) => pet.id == petID)) {
+      _errorMessage = const CareServiceError(
+        CareServiceErrorType.invalidProfile,
+      ).message;
+      notifyListeners();
+      return false;
+    }
     try {
       await _service.removePet(household.id, petID);
       return true;

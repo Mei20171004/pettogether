@@ -407,8 +407,8 @@ void main() {
       expect(store.courseLengthDays('plan-new'), 5);
       expect(store.courseDayNumber('plan-new', start), 1);
 
-      // The course shows up in the medical history without extra wiring, so
-      // the vet visit pack picks it up too.
+      // The course has a backing health record so the vet visit pack receives
+      // it even though the Health screen presents it only under Medication.
       final record = store.courseHealthRecord('plan-new');
       expect(record, isNotNull);
       expect(record!.type, HealthRecordType.medication);
@@ -459,7 +459,7 @@ void main() {
         store.doseTasksOn(DateTime.now().add(const Duration(days: 1))),
         isEmpty,
       );
-      // The medical-history entry survives the course ending.
+      // The report backing record survives the course ending.
       expect(store.courseHealthRecord(plan.id), isNotNull);
     });
 

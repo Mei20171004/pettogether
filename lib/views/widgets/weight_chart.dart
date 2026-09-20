@@ -37,6 +37,7 @@ class WeightChart extends StatelessWidget {
       for (var i = 0; i < entries.length; i++)
         FlSpot(i.toDouble(), entries[i].weightKg),
     ];
+    final labelEvery = entries.length <= 5 ? 1 : (entries.length / 4).ceil();
 
     return Container(
       height: height,
@@ -85,9 +86,14 @@ class WeightChart extends StatelessWidget {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
+                      interval: 1,
                       getTitlesWidget: (v, meta) {
-                        final i = v.toInt();
+                        if (v != v.roundToDouble()) return const SizedBox();
+                        final i = v.round();
                         if (i < 0 || i >= entries.length) {
+                          return const SizedBox();
+                        }
+                        if (i % labelEvery != 0 && i != entries.length - 1) {
                           return const SizedBox();
                         }
                         final d = entries[i].date;

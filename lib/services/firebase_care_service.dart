@@ -232,6 +232,57 @@ class FirebaseCareService implements CareService {
   }
 
   @override
+  Future<void> updateTask(CareTask task, String householdID) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    final ref = _taskRef(householdID, task.id);
+    await _db.runTransaction((tx) async {
+      final doc = await tx.get(ref);
+      if (!doc.exists) {
+        throw const CareServiceError(CareServiceErrorType.taskNotFound);
+      }
+      final data = doc.data()!;
+      if (CareTaskKind.fromRaw(data['kind'] as String? ?? 'oneOff') !=
+              CareTaskKind.oneOff ||
+          _status(data['status'] as String?) != CareTaskStatus.unclaimed ||
+          _revision(data) != task.revision) {
+        throw const CareServiceError(CareServiceErrorType.invalidTransition);
+      }
+      tx.update(ref, {
+        'title': task.title,
+        'category': task.category.id,
+        'categoryName': task.category.name,
+        'dueTime': Timestamp.fromDate(task.dueTime),
+        'priority': task.priority.rawValue,
+        'petID': task.petID,
+        'petIds': task.petIds,
+        'revision': task.revision + 1,
+      });
+    });
+  }
+
+  @override
+  Future<void> deleteTask(CareTask task, String householdID) async {
+    _ensureConfigured();
+    await _ensureAuthenticated();
+    final ref = _taskRef(householdID, task.id);
+    await _db.runTransaction((tx) async {
+      final doc = await tx.get(ref);
+      if (!doc.exists) {
+        throw const CareServiceError(CareServiceErrorType.taskNotFound);
+      }
+      final data = doc.data()!;
+      if (CareTaskKind.fromRaw(data['kind'] as String? ?? 'oneOff') !=
+              CareTaskKind.oneOff ||
+          _status(data['status'] as String?) != CareTaskStatus.unclaimed ||
+          _revision(data) != task.revision) {
+        throw const CareServiceError(CareServiceErrorType.invalidTransition);
+      }
+      tx.delete(ref);
+    });
+  }
+
+  @override
   Future<void> updateRoutine(CareRoutine routine, String householdID) async {
     _ensureConfigured();
     await _ensureAuthenticated();
@@ -319,9 +370,12 @@ class FirebaseCareService implements CareService {
     await _db.runTransaction((tx) async {
       final ref = _householdRef(householdID);
       final doc = await tx.get(ref);
-      final pets = _petsFromData(doc.data())
-          .where((p) => p.id != petID)
-          .toList();
+      final currentPets = _petsFromData(doc.data());
+      if (currentPets.length <= 1 ||
+          !currentPets.any((pet) => pet.id == petID)) {
+        throw const CareServiceError(CareServiceErrorType.invalidProfile);
+      }
+      final pets = currentPets.where((p) => p.id != petID).toList();
       tx.update(ref, {'pets': pets.map((e) => e.toJson()).toList()});
     });
   }
@@ -648,9 +702,6 @@ class FirebaseCareService implements CareService {
     _ensureConfigured();
     final user = await _ensureAuthenticated();
     _validate(caregiver, user.uid);
-    if (task.routineID == null) {
-      throw const CareServiceError(CareServiceErrorType.invalidTransition);
-    }
     final ref = _taskRef(householdID, task.id);
     await _db.runTransaction((tx) async {
       final doc = await tx.get(ref);
@@ -663,9 +714,12 @@ class FirebaseCareService implements CareService {
           'skipReason': reason?.rawValue,
           'skipNote': note,
           'revision': _revision(data) + 1,
+          ..._clearedRequest(),
         });
       } else {
-        if (task.createdByID == null) {
+        if (task.kind != CareTaskKind.routine ||
+            task.routineID == null ||
+            task.createdByID == null) {
           throw const CareServiceError(CareServiceErrorType.taskNotFound);
         }
         final materialized = task.copyWith(
@@ -696,7 +750,7 @@ class FirebaseCareService implements CareService {
     _ensureConfigured();
     final user = await _ensureAuthenticated();
     _validate(caregiver, user.uid);
-    if (task.routineID == null) {
+    if (task.kind != CareTaskKind.oneOff && task.routineID == null) {
       throw const CareServiceError(CareServiceErrorType.invalidTransition);
     }
     final ref = _taskRef(householdID, task.id);
@@ -708,9 +762,20 @@ class FirebaseCareService implements CareService {
       if (_status(doc.data()!['status'] as String?) != CareTaskStatus.skipped) {
         throw const CareServiceError(CareServiceErrorType.invalidTransition);
       }
-      // Deleting the override lets the store regenerate the occurrence from
-      // its routine (unclaimed), which also clears any skip reason.
-      tx.delete(ref);
+      if (task.routineID != null) {
+        // Deleting the override lets the store regenerate the occurrence from
+        // its routine (unclaimed), which also clears any skip reason.
+        tx.delete(ref);
+      } else {
+        tx.update(ref, {
+          'status': CareTaskStatus.unclaimed.rawValue,
+          'skipReason': FieldValue.delete(),
+          'skipNote': FieldValue.delete(),
+          'skippedBy': FieldValue.delete(),
+          'skippedAt': FieldValue.delete(),
+          'revision': _revision(doc.data()!) + 1,
+        });
+      }
     });
   }
 
@@ -720,6 +785,20 @@ class FirebaseCareService implements CareService {
 
   @override
   Future<HouseholdInvitation> createInvitation({
+    required String householdID,
+    required String inviterName,
+  }) async {
+    try {
+      return await _createInvitation(
+        householdID: householdID,
+        inviterName: inviterName,
+      );
+    } catch (error) {
+      throw _map(error);
+    }
+  }
+
+  Future<HouseholdInvitation> _createInvitation({
     required String householdID,
     required String inviterName,
   }) async {
@@ -759,23 +838,28 @@ class FirebaseCareService implements CareService {
 
   @override
   Future<HouseholdInvitation> loadInvitation(String invitationID) async {
-    _ensureConfigured();
-    await _ensureAuthenticated();
-    final doc = await _db.collection('invitations').doc(invitationID).get();
-    if (!doc.exists) {
-      throw const CareServiceError(CareServiceErrorType.invitationNotFound);
+    try {
+      _ensureConfigured();
+      await _ensureAuthenticated();
+      final doc = await _db.collection('invitations').doc(invitationID).get();
+      if (!doc.exists) {
+        throw const CareServiceError(CareServiceErrorType.invitationNotFound);
+      }
+      final invitation = _invitationFrom(doc);
+      if (invitation.status == InvitationStatus.revoked) {
+        throw const CareServiceError(CareServiceErrorType.invitationRevoked);
+      }
+      if (invitation.status != InvitationStatus.active) {
+        throw const CareServiceError(
+            CareServiceErrorType.invitationAlreadyClaimed);
+      }
+      if (!invitation.expiresAt.isAfter(DateTime.now())) {
+        throw const CareServiceError(CareServiceErrorType.invitationExpired);
+      }
+      return invitation;
+    } catch (error) {
+      throw _map(error);
     }
-    final invitation = _invitationFrom(doc);
-    if (invitation.status == InvitationStatus.revoked) {
-      throw const CareServiceError(CareServiceErrorType.invitationRevoked);
-    }
-    if (invitation.status != InvitationStatus.active) {
-      throw const CareServiceError(CareServiceErrorType.invitationAlreadyClaimed);
-    }
-    if (!invitation.expiresAt.isAfter(DateTime.now())) {
-      throw const CareServiceError(CareServiceErrorType.invitationExpired);
-    }
-    return invitation;
   }
 
   @override
@@ -803,6 +887,22 @@ class FirebaseCareService implements CareService {
 
   @override
   Future<HouseholdJoinRequest> requestToJoin({
+    required HouseholdInvitation invitation,
+    required String name,
+    String? email,
+  }) async {
+    try {
+      return await _requestToJoin(
+        invitation: invitation,
+        name: name,
+        email: email,
+      );
+    } catch (error) {
+      throw _map(error);
+    }
+  }
+
+  Future<HouseholdJoinRequest> _requestToJoin({
     required HouseholdInvitation invitation,
     required String name,
     String? email,
@@ -1793,6 +1893,9 @@ class FirebaseCareService implements CareService {
 
   CareServiceError _map(Object error) {
     if (error is CareServiceError) return error;
+    if (error is TypeError || error is FormatException) {
+      return const CareServiceError(CareServiceErrorType.malformedData);
+    }
     if (error is FirebaseException) {
       switch (error.code) {
         case 'permission-denied':

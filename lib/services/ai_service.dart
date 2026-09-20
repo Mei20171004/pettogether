@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_ai/firebase_ai.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import '../models/ai_plan.dart';
 import '../models/models.dart';
@@ -11,46 +13,126 @@ class AiService {
   AiService._();
   static final AiService instance = AiService._();
 
+  /// Pinned instead of using a moving `-latest` alias so a released build does
+  /// not silently switch model behavior. Keep this aligned with Firebase AI
+  /// Logic's supported-model list.
+  static const String modelName = 'gemini-3.8-flash';
+
   /// Longest instruction accepted. Anything past this is the user pasting a
   /// document, which costs tokens without improving the parse.
   static const int maxInstructionLength = 1000;
 
   Future<AiParseResult> parseInstruction(String text, List<Pet> pets) async {
+    if (Firebase.apps.isEmpty) {
+      throw const AiFailure(
+        AiFailureKind.configuration,
+        'Firebase was not initialized before an AI request.',
+      );
+    }
+
     final instruction = text.length > maxInstructionLength
         ? text.substring(0, maxInstructionLength)
         : text;
-    final googleAI = FirebaseAI.googleAI();
-    final model = googleAI.generativeModel(
-      model: 'gemini-flash-latest',
-      systemInstruction: Content.text(_systemPrompt()),
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-        responseSchema: _schema,
-        // A parsed care plan is small. Capping output bounds the cost of a
-        // single call and of a prompt that tries to make the model ramble.
-        maxOutputTokens: 2048,
-      ),
-    );
+    try {
+      final googleAI = FirebaseAI.googleAI();
+      final model = googleAI.generativeModel(
+        model: modelName,
+        systemInstruction: Content.text(_systemPrompt()),
+        generationConfig: GenerationConfig(
+          responseMimeType: 'application/json',
+          responseSchema: _schema,
+          // A parsed care plan is small. Capping output bounds the cost of a
+          // single call and of a prompt that tries to make the model ramble.
+          maxOutputTokens: 2048,
+        ),
+      );
 
-    final petContext = pets.isEmpty
-        ? '(no existing pets)'
-        : pets.map((p) => '- ${p.name} (type: ${p.type.rawValue})').join('\n');
+      final petContext = pets.isEmpty
+          ? '(no existing pets)'
+          : pets
+                .map((p) => '- ${p.name} (type: ${p.type.rawValue})')
+                .join('\n');
 
-    final response = await model.generateContent([
-      Content.text(
-        'Existing pets:\n$petContext\n\nUser instruction:\n$instruction',
-      ),
-    ]);
+      final response = await model.generateContent([
+        Content.text(
+          'Existing pets:\n$petContext\n\nUser instruction:\n$instruction',
+        ),
+      ]);
 
-    final raw = (response.text ?? '').trim();
-    if (raw.isEmpty) {
-      throw const FormatException('AI 没有返回内容，请重试。');
+      final raw = (response.text ?? '').trim();
+      if (raw.isEmpty) {
+        throw const FormatException('AI returned an empty response.');
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('AI returned a non-object response.');
+      }
+      try {
+        return AiParseResult.fromJson(decoded);
+      } catch (error) {
+        throw AiFailure(AiFailureKind.invalidResponse, error.toString());
+      }
+    } catch (error) {
+      if (error is AiFailure) rethrow;
+      throw classifyFailure(error);
     }
-    final decoded = jsonDecode(raw);
-    if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('AI 返回格式异常，请重试。');
+  }
+
+  /// Converts SDK and transport errors into stable product-facing categories.
+  /// The original diagnostic remains available for logs, while the UI decides
+  /// what is safe and useful to show to a pet owner.
+  static AiFailure classifyFailure(Object error) {
+    if (error is AiFailure) return error;
+    if (error is InvalidApiKey || error is ServiceApiNotEnabled) {
+      return AiFailure(AiFailureKind.configuration, error.toString());
     }
-    return AiParseResult.fromJson(decoded);
+    if (error is UnsupportedUserLocation) {
+      return AiFailure(AiFailureKind.unsupportedRegion, error.toString());
+    }
+    if (error is QuotaExceeded) {
+      return AiFailure(AiFailureKind.quota, error.toString());
+    }
+    if (error is TimeoutException) {
+      return AiFailure(AiFailureKind.network, error.toString());
+    }
+    if (error is FormatException) {
+      return AiFailure(AiFailureKind.invalidResponse, error.toString());
+    }
+    if (error is FirebaseException) {
+      final details = '${error.code} ${error.message ?? ''}'.toLowerCase();
+      if (details.contains('network')) {
+        return AiFailure(AiFailureKind.network, error.toString());
+      }
+      if (details.contains('firebaseappcheck.googleapis.com') &&
+          (details.contains('service_disabled') ||
+              details.contains('not enabled'))) {
+        return AiFailure(AiFailureKind.configuration, error.toString());
+      }
+      if (details.contains('permission') ||
+          details.contains('unauth') ||
+          details.contains('app-check') ||
+          details.contains('app check')) {
+        return AiFailure(AiFailureKind.authorization, error.toString());
+      }
+      return AiFailure(AiFailureKind.server, error.toString());
+    }
+    if (error is FirebaseAIException) {
+      final message = error.message.toLowerCase();
+      if (message.contains('permission_denied') ||
+          message.contains('permission denied') ||
+          message.contains('unauthenticated') ||
+          message.contains('app check') ||
+          message.contains('appcheck')) {
+        return AiFailure(AiFailureKind.authorization, error.toString());
+      }
+      if (message.contains('network') ||
+          message.contains('connection') ||
+          message.contains('timed out')) {
+        return AiFailure(AiFailureKind.network, error.toString());
+      }
+      return AiFailure(AiFailureKind.server, error.toString());
+    }
+    return AiFailure(AiFailureKind.server, error.toString());
   }
 
   String _systemPrompt() {
@@ -112,4 +194,24 @@ Rules:
       ),
     },
   );
+}
+
+enum AiFailureKind {
+  configuration,
+  network,
+  authorization,
+  quota,
+  unsupportedRegion,
+  invalidResponse,
+  server,
+}
+
+class AiFailure implements Exception {
+  const AiFailure(this.kind, this.diagnostic);
+
+  final AiFailureKind kind;
+  final String diagnostic;
+
+  @override
+  String toString() => 'AiFailure($kind): $diagnostic';
 }

@@ -5,6 +5,8 @@
 /// `Timestamp`s on the wire (see the service layer).
 library;
 
+import 'invitation_link.dart';
+
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
@@ -582,6 +584,7 @@ class CareRoutine {
     String? doseText,
     String? doseInstructions,
     bool clearEndDate = false,
+    bool clearPetID = false,
     bool clearDoseInstructions = false,
   }) {
     return CareRoutine(
@@ -592,7 +595,7 @@ class CareRoutine {
       frequency: frequency ?? this.frequency,
       weekdays: weekdays ?? this.weekdays,
       interval: interval ?? this.interval,
-      petID: petID ?? this.petID,
+      petID: clearPetID ? null : (petID ?? this.petID),
       petIds: petIds ?? this.petIds,
       hour: hour ?? this.hour,
       minute: minute ?? this.minute,
@@ -740,6 +743,13 @@ class CareTask {
   static const int maxSkipNoteLength = 200;
 
   CareTask copyWith({
+    String? title,
+    CareCategory? category,
+    DateTime? dueTime,
+    CarePriority? priority,
+    String? petID,
+    List<String>? petIds,
+    bool clearPetID = false,
     CareTaskStatus? status,
     AssignmentRequest? assignmentRequest,
     bool clearAssignmentRequest = false,
@@ -757,14 +767,14 @@ class CareTask {
   }) {
     return CareTask(
       id: id,
-      title: title,
-      category: category,
-      dueTime: dueTime,
+      title: title ?? this.title,
+      category: category ?? this.category,
+      dueTime: dueTime ?? this.dueTime,
       kind: kind,
-      priority: priority,
+      priority: priority ?? this.priority,
       routineID: routineID,
-      petID: petID,
-      petIds: petIds,
+      petID: clearPetID ? null : (petID ?? this.petID),
+      petIds: petIds ?? this.petIds,
       status: status ?? this.status,
       assignmentRequest: clearAssignmentRequest
           ? null
@@ -884,8 +894,8 @@ enum JoinRequestStatus {
       .firstWhere((e) => e.rawValue == value, orElse: () => JoinRequestStatus.pending);
 }
 
-/// A one-time, expiring invitation to a household. The deep link
-/// `pettogether://invite/<id>` (also encoded as a QR code) carries the id.
+/// A one-time, expiring invitation to a household. Its copied/shared link and
+/// QR code carry both this invitation id and the Firebase household id.
 class HouseholdInvitation {
   const HouseholdInvitation({
     required this.id,
@@ -919,7 +929,10 @@ class HouseholdInvitation {
   final String? reviewedBy;
   final DateTime? reviewedAt;
 
-  String get deepLink => 'pettogether://invite/$id';
+  String get deepLink => InvitationLink(
+        invitationId: id,
+        householdId: householdId,
+      ).appUri.toString();
 
   bool get isActive =>
       status == InvitationStatus.active && expiresAt.isAfter(DateTime.now());

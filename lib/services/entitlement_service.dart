@@ -3,7 +3,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// The Pro state of a household, mirrored into Firestore by the RevenueCat
 /// webhook. Clients can read it but never write it.
 class HouseholdPro {
-  const HouseholdPro({required this.active, required this.legacy});
+  const HouseholdPro({
+    required this.active,
+    required this.legacy,
+    required this.multiPetActive,
+    required this.aiActive,
+  });
 
   /// At least one member has a live `pet_together_pro` entitlement.
   final bool active;
@@ -12,9 +17,18 @@ class HouseholdPro {
   /// already had. Set once by `scripts/backfill_legacy_pro.js`.
   final bool legacy;
 
+  /// Independent add-ons shared across every caregiver in the household.
+  final bool multiPetActive;
+  final bool aiActive;
+
   bool get unlocked => active || legacy;
 
-  static const HouseholdPro none = HouseholdPro(active: false, legacy: false);
+  static const HouseholdPro none = HouseholdPro(
+    active: false,
+    legacy: false,
+    multiPetActive: false,
+    aiActive: false,
+  );
 
   factory HouseholdPro.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> s) {
     final data = s.data();
@@ -22,6 +36,8 @@ class HouseholdPro {
     return HouseholdPro(
       active: data['active'] == true,
       legacy: data['legacy'] == true,
+      multiPetActive: data['multiPetActive'] == true,
+      aiActive: data['aiActive'] == true,
     );
   }
 }

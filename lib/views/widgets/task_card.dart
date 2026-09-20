@@ -12,9 +12,11 @@ import 'common.dart';
 /// A single care task card with claim/request/complete actions, ported from
 /// `TaskCardView.swift`.
 class TaskCard extends StatelessWidget {
-  const TaskCard({super.key, required this.task});
+  const TaskCard({super.key, required this.task, this.onEdit, this.onDelete});
 
   final CareTask task;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -131,7 +133,72 @@ class TaskCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Icon(_stateIcon, size: 20, color: stateColor),
+                  if (_stateIcon != null || onEdit != null || onDelete != null)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_stateIcon case final icon?) Icon(icon, size: 20, color: stateColor),
+                        if (onEdit != null || onDelete != null)
+                          PopupMenuButton<_TaskMenuAction>(
+                            key: ValueKey('today-task-menu-${task.id}'),
+                            tooltip: L10n.text(
+                              language,
+                              'Manage task',
+                              'タスクを管理',
+                              '管理任务',
+                              '작업 관리',
+                            ),
+                            onSelected: (action) {
+                              switch (action) {
+                                case _TaskMenuAction.edit:
+                                  onEdit?.call();
+                                case _TaskMenuAction.delete:
+                                  onDelete?.call();
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              if (onEdit != null)
+                                PopupMenuItem(
+                                  value: _TaskMenuAction.edit,
+                                  child: ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: const Icon(Icons.edit_outlined),
+                                    title: Text(
+                                      L10n.text(
+                                        language,
+                                        'Edit task',
+                                        'タスクを編集',
+                                        '编辑任务',
+                                        '작업 편집',
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              if (onDelete != null)
+                                PopupMenuItem(
+                                  value: _TaskMenuAction.delete,
+                                  child: ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: const Icon(
+                                      Icons.delete_outline,
+                                      color: Colors.red,
+                                    ),
+                                    title: Text(
+                                      L10n.text(
+                                        language,
+                                        'Delete task',
+                                        'タスクを削除',
+                                        '删除任务',
+                                        '작업 삭제',
+                                      ),
+                                      style: const TextStyle(color: Colors.red),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                      ],
+                    ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -139,8 +206,10 @@ class TaskCard extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(_stateIcon, size: 15, color: stateColor),
-                  const SizedBox(width: 8),
+                  if (_stateIcon case final icon?) ...[
+                    Icon(icon, size: 15, color: stateColor),
+                    const SizedBox(width: 8),
+                  ],
                   Expanded(
                     child: Text(
                       _stateMessage(language, store),
@@ -178,12 +247,10 @@ class TaskCard extends StatelessWidget {
     );
   }
 
-  IconData get _stateIcon {
+  IconData? get _stateIcon {
     switch (task.status) {
       case CareTaskStatus.unclaimed:
-        return task.assignmentRequest == null
-            ? Icons.help_outline
-            : Icons.send;
+        return task.assignmentRequest == null ? null : Icons.send;
       case CareTaskStatus.claimed:
         return Icons.how_to_reg;
       case CareTaskStatus.completed:
@@ -325,6 +392,8 @@ class TaskCard extends StatelessWidget {
     return DateFormat.jm(language.rawValue).format(date);
   }
 }
+
+enum _TaskMenuAction { edit, delete }
 
 class _ActionButtons extends StatelessWidget {
   const _ActionButtons({required this.task});
@@ -476,15 +545,13 @@ class _UnclaimedActions extends StatelessWidget {
           child: Text(L10n.text(
               language, 'Choose a person', '担当者を指定', '指定负责人', '담당자 지정')),
         ),
-        if (task.kind == CareTaskKind.routine) ...[
-          const SizedBox(height: 10),
-          ElevatedButton(
-            style: pawCompactButtonStyle(PawColors.muted),
-            onPressed: () => _skip(context, store),
-            child: Text(L10n.text(
-                language, 'Skip today', '今日はスキップ', '今天跳过', '오늘 건너뛰기')),
-          ),
-        ],
+        const SizedBox(height: 10),
+        ElevatedButton(
+          style: pawCompactButtonStyle(PawColors.muted),
+          onPressed: () => _skip(context, store),
+          child: Text(L10n.text(
+              language, 'Skip today', '今日はスキップ', '今天跳过', '오늘 건너뛰기')),
+        ),
       ],
     );
   }

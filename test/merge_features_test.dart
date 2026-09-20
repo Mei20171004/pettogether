@@ -75,12 +75,16 @@ void main() {
         createdAt: DateTime.now(),
         expiresAt: DateTime.now().add(const Duration(hours: 24)),
       );
-      expect(invitation.deepLink, 'pettogether://invite/inv-123');
+      expect(
+        invitation.deepLink,
+        'pettogether://invite/inv-123?household=hh-1',
+      );
       expect(invitation.isActive, isTrue);
       final parsed = Uri.parse(invitation.deepLink);
       expect(parsed.scheme, 'pettogether');
       expect(parsed.host, 'invite');
       expect(parsed.pathSegments.last, 'inv-123');
+      expect(parsed.queryParameters['household'], 'hh-1');
     });
   });
 

@@ -34,6 +34,14 @@ abstract final class AppConfig {
   /// RevenueCat entitlement identifier that unlocks pettogether Pro.
   static const String proEntitlementId = 'pet_together_pro';
 
+  /// Independent monthly add-ons. These identifiers must match RevenueCat;
+  /// the product identifiers must match App Store Connect / Google Play.
+  static const String multiPetEntitlementId = 'pet_together_multi_pet';
+  static const String aiEntitlementId = 'pet_together_ai';
+  static const String multiPetMonthlyProductId =
+      'pettogether_multi_pet_monthly';
+  static const String aiMonthlyProductId = 'pettogether_ai_monthly';
+
   /// Picks the key this build is allowed to use, or null when there is none.
   ///
   /// RevenueCat deliberately crashes a release build that is configured with a
@@ -51,20 +59,18 @@ abstract final class AppConfig {
 
 /// Where the free tier stops and Pro begins.
 ///
-/// Counting limits (medication courses, pets) cannot be expressed in Firestore
-/// Security Rules, so they are enforced here and in the UI. The limits that can
-/// be enforced server-side — photo attachments — are also mirrored in
-/// `firestore.rules` and `storage.rules`.
+/// Medication-course counts cannot be expressed in Firestore Security Rules,
+/// so that limit is enforced here and in the UI. Pet count and photo-attachment
+/// gates are also mirrored in `firestore.rules` / `storage.rules`.
 abstract final class ProLimits {
-  /// AI parses per calendar month. Free users get a real taste; Pro gets a
+  /// AI requires its own subscription. Subscribers retain the existing
   /// fair-use ceiling so one account cannot run up the Gemini bill.
-  static const int freeAiParsesPerMonth = 3;
+  static const int freeAiParsesPerMonth = 0;
   static const int proAiParsesPerMonth = 100;
 
   /// Medication courses that may be running at the same time.
   static const int freeActiveMedicationCourses = 1;
 
-  /// Pets and caregivers are left unlimited on the free tier until the team
-  /// decides whether to charge for them (see the plan's open decisions).
-  static const int? freePets = null;
+  /// The first pet is free; a separate monthly subscription unlocks more.
+  static const int freePets = 1;
 }

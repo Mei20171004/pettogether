@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -14,6 +13,7 @@ import '../../store/pro_access.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/id.dart';
 import '../widgets/common.dart';
+import '../widgets/pet_time_picker.dart';
 import '../pro_view.dart';
 
 /// Creates or edits one medical record.
@@ -89,8 +89,17 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
   @override
   void dispose() {
     for (final controller in [
-      _title, _clinic, _vet, _diagnosis, _treatment, _cost,
-      _productName, _lotNumber, _weight, _temperature, _notes,
+      _title,
+      _clinic,
+      _vet,
+      _diagnosis,
+      _treatment,
+      _cost,
+      _productName,
+      _lotNumber,
+      _weight,
+      _temperature,
+      _notes,
     ]) {
       controller.dispose();
     }
@@ -107,10 +116,23 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: Text(_isEditing
-            ? L10n.text(language, 'Edit record', '記録を編集', '编辑记录', '기록 편집')
-            : L10n.text(language, 'New record', '記録を追加', '新建记录', '기록 추가')),
+        backgroundColor: Colors.white,
+        foregroundColor: PawColors.ink,
+        surfaceTintColor: Colors.transparent,
+        systemOverlayStyle: SystemUiOverlayStyle.dark.copyWith(
+          statusBarColor: Colors.white,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+        ),
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.close),
+        ),
+        title: Text(
+          _isEditing
+              ? L10n.text(language, 'Edit record', '記録を編集', '编辑记录', '기록 편집')
+              : L10n.text(language, 'New record', '記録を追加', '新建记录', '기록 추가'),
+        ),
       ),
       body: Stack(
         children: [
@@ -133,16 +155,25 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
                   style: pawPrimaryButtonStyle(),
                   onPressed: store.isSavingHealth || _uploading
                       ? null
-                      : () => _save(store),
+                      : () => _save(store, language),
                   child: store.isSavingHealth
                       ? const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
-                      : Text(L10n.text(language, 'Save record', '保存', '保存记录',
-                          '저장')),
+                      : Text(
+                          L10n.text(
+                            language,
+                            'Save record',
+                            '保存',
+                            '保存记录',
+                            '저장',
+                          ),
+                        ),
                 ),
               ],
             ),
@@ -157,8 +188,13 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _fieldLabel(L10n.text(language, 'Which pet', 'どのこ', '哪只宠物', '어느 아이'),
-              Icons.pets),
+          _fieldLabel(
+            _requiredLabel(
+              language,
+              L10n.text(language, 'Which pet', 'どのこ', '哪只宠物', '어느 아이'),
+            ),
+            Icons.pets,
+          ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
@@ -183,15 +219,20 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _fieldLabel(
+            _requiredLabel(
+              language,
               L10n.text(language, 'What happened', '種類', '记录类型', '기록 종류'),
-              Icons.category_outlined),
+            ),
+            Icons.category_outlined,
+          ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final type in HealthRecordType.values
-                  .where((t) => !t.isCourseGenerated))
+              for (final type in HealthRecordType.values.where(
+                (t) => !t.isCourseGenerated,
+              ))
                 ChoiceChip(
                   selected: _type == type,
                   onSelected: (_) => setState(() => _type = type),
@@ -211,42 +252,62 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _fieldLabel(
-              L10n.healthRecordTypeTitle(language, _type), healthRecordIcon(_type)),
+            L10n.healthRecordTypeTitle(language, _type),
+            healthRecordIcon(_type),
+          ),
           const SizedBox(height: 10),
           TextField(
             controller: _title,
             maxLength: HealthRecord.maxTitleLength,
-            decoration: petFieldDecoration(hintText: _titleHint(language))
-                .copyWith(counterText: ''),
+            decoration: petFieldDecoration(
+              hintText: _optionalLabel(language, _titleHint(language)),
+            ).copyWith(counterText: ''),
           ),
           const SizedBox(height: 12),
           // Backdating is the normal case: you write this up in the evening,
           // about something that happened at the clinic that morning.
           _dateTimeTile(
-            label: L10n.text(language, 'When it happened', '日時', '发生时间', '발생 시각'),
+            label: _requiredLabel(
+              language,
+              L10n.text(language, 'When it happened', '日時', '发生时间', '발생 시각'),
+            ),
             value: _occurredAt,
             language: language,
             onTap: _pickOccurredAt,
           ),
           if (_type.hasClinicDetails) ...[
             const SizedBox(height: 12),
-            _field(_clinic,
-                L10n.text(language, 'Clinic', '動物病院', '医院', '병원')),
+            _field(
+              _clinic,
+              L10n.text(language, 'Clinic', '動物病院', '医院', '병원'),
+              language,
+            ),
             const SizedBox(height: 12),
-            _field(_vet, L10n.text(language, 'Vet', '担当獣医', '医生', '수의사')),
+            _field(
+              _vet,
+              L10n.text(language, 'Vet', '担当獣医', '医生', '수의사'),
+              language,
+            ),
           ],
           if (_type.hasDiagnosis) ...[
             const SizedBox(height: 12),
             _field(
               _diagnosis,
               L10n.text(language, 'Diagnosis', '診断', '诊断', '진단'),
+              language,
               maxLines: 2,
             ),
             const SizedBox(height: 12),
             _field(
               _treatment,
-              L10n.text(language, 'Treatment and medicine prescribed', '処置・処方',
-                  '处置与开的药', '처치 및 처방'),
+              L10n.text(
+                language,
+                'Treatment and medicine prescribed',
+                '処置・処方',
+                '处置与开的药',
+                '처치 및 처방',
+              ),
+              language,
               maxLines: 3,
             ),
           ],
@@ -254,8 +315,14 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
             const SizedBox(height: 12),
             _field(
               _diagnosis,
-              L10n.text(language, 'What the results said', '検査結果', '化验结论',
-                  '검사 결과'),
+              L10n.text(
+                language,
+                'What the results said',
+                '検査結果',
+                '化验结论',
+                '검사 결과',
+              ),
+              language,
               maxLines: 3,
             ),
           ],
@@ -264,11 +331,13 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
             _field(
               _productName,
               L10n.text(language, 'Product name', '製品名', '产品名称', '제품명'),
+              language,
             ),
             const SizedBox(height: 12),
             _field(
               _lotNumber,
               L10n.text(language, 'Lot number', 'ロット番号', '批号', '로트 번호'),
+              language,
             ),
             const SizedBox(height: 12),
             // The field that turns a filed record into a reminder.
@@ -278,24 +347,37 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
             const SizedBox(height: 12),
             _numberField(
               _weight,
-              L10n.text(language, 'Weight in kg', '体重 (kg)', '体重（kg）',
-                  '체중 (kg)'),
+              L10n.text(
+                language,
+                'Weight in kg',
+                '体重 (kg)',
+                '体重（kg）',
+                '체중 (kg)',
+              ),
+              language,
+              required: true,
             ),
           ],
           if (_type == HealthRecordType.symptom) ...[
             const SizedBox(height: 12),
             _numberField(
               _temperature,
-              L10n.text(language, 'Temperature in °C (optional)', '体温 (℃・任意)',
-                  '体温（°C，可选）', '체온 (°C, 선택)'),
+              L10n.text(
+                language,
+                'Temperature in °C',
+                '体温 (℃)',
+                '体温（°C）',
+                '체온 (°C)',
+              ),
+              language,
             ),
           ],
           if (_type.hasCost) ...[
             const SizedBox(height: 12),
             _numberField(
               _cost,
-              L10n.text(language, 'Cost (optional)', '費用（任意）', '费用（可选）',
-                  '비용 (선택)'),
+              L10n.text(language, 'Cost', '費用', '费用', '비용'),
+              language,
               decimal: false,
             ),
           ],
@@ -303,6 +385,7 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
           _field(
             _notes,
             L10n.text(language, 'Notes', 'メモ', '备注', '메모'),
+            language,
             maxLines: 4,
             maxLength: HealthRecord.maxNotesLength,
           ),
@@ -313,36 +396,76 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
 
   String _titleHint(AppLanguage language) {
     return switch (_type) {
-      HealthRecordType.vetVisit => L10n.text(language, 'e.g. vomiting and off food',
-          '例：嘔吐と食欲不振', '例：呕吐、不吃东西', '예: 구토와 식욕 저하'),
+      HealthRecordType.vetVisit => L10n.text(
+        language,
+        'e.g. vomiting and off food',
+        '例：嘔吐と食欲不振',
+        '例：呕吐、不吃东西',
+        '예: 구토와 식욕 저하',
+      ),
       HealthRecordType.vaccination => L10n.text(
-          language, 'e.g. rabies vaccination', '例：狂犬病ワクチン', '例：狂犬疫苗',
-          '예: 광견병 예방접종'),
+        language,
+        'e.g. rabies vaccination',
+        '例：狂犬病ワクチン',
+        '例：狂犬疫苗',
+        '예: 광견병 예방접종',
+      ),
       HealthRecordType.deworming => L10n.text(
-          language, 'e.g. monthly dewormer', '例：月1回の駆虫薬', '例：每月驱虫',
-          '예: 매월 구충제'),
+        language,
+        'e.g. monthly dewormer',
+        '例：月1回の駆虫薬',
+        '例：每月驱虫',
+        '예: 매월 구충제',
+      ),
       HealthRecordType.labResult => L10n.text(
-          language, 'e.g. blood panel', '例：血液検査', '例：血常规', '예: 혈액 검사'),
+        language,
+        'e.g. blood panel',
+        '例：血液検査',
+        '例：血常规',
+        '예: 혈액 검사',
+      ),
       HealthRecordType.surgery => L10n.text(
-          language, 'e.g. dental extraction', '例：抜歯手術', '例：拔牙手术', '예: 발치 수술'),
+        language,
+        'e.g. dental extraction',
+        '例：抜歯手術',
+        '例：拔牙手术',
+        '예: 발치 수술',
+      ),
       HealthRecordType.symptom => L10n.text(
-          language, 'e.g. limping on the back left leg', '例：左後ろ足を引きずる',
-          '例：左后腿一瘸一拐', '예: 왼쪽 뒷다리를 절뚝임'),
+        language,
+        'e.g. limping on the back left leg',
+        '例：左後ろ足を引きずる',
+        '例：左后腿一瘸一拐',
+        '예: 왼쪽 뒷다리를 절뚝임',
+      ),
       HealthRecordType.weight => L10n.text(
-          language, 'e.g. weekly weigh-in', '例：定期の体重測定', '例：每周称重',
-          '예: 주간 체중 측정'),
+        language,
+        'e.g. weekly weigh-in',
+        '例：定期の体重測定',
+        '例：每周称重',
+        '예: 주간 체중 측정',
+      ),
       HealthRecordType.medication => L10n.text(
-          language, 'e.g. amoxicillin', '例：アモキシシリン', '例：阿莫西林',
-          '예: 아목시실린'),
+        language,
+        'e.g. amoxicillin',
+        '例：アモキシシリン',
+        '例：阿莫西林',
+        '예: 아목시실린',
+      ),
       HealthRecordType.note => L10n.text(
-          language, 'e.g. drinking more water than usual', '例：水をよく飲む',
-          '例：比平时喝水多', '예: 평소보다 물을 많이 마심'),
+        language,
+        'e.g. drinking more water than usual',
+        '例：水をよく飲む',
+        '例：比平时喝水多',
+        '예: 평소보다 물을 많이 마심',
+      ),
     };
   }
 
   Widget _field(
     TextEditingController controller,
-    String hint, {
+    String hint,
+    AppLanguage language, {
     int maxLines = 1,
     int? maxLength,
   }) {
@@ -350,24 +473,31 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
       controller: controller,
       maxLines: maxLines,
       maxLength: maxLength ?? HealthRecord.maxFieldLength,
-      decoration:
-          petFieldDecoration(hintText: hint).copyWith(counterText: ''),
+      decoration: petFieldDecoration(hintText: _optionalLabel(language, hint))
+          .copyWith(counterText: ''),
     );
   }
 
   Widget _numberField(
     TextEditingController controller,
-    String hint, {
+    String hint,
+    AppLanguage language, {
     bool decimal = true,
+    bool required = false,
   }) {
     return TextField(
       controller: controller,
       keyboardType: TextInputType.numberWithOptions(decimal: decimal),
       inputFormatters: [
         FilteringTextInputFormatter.allow(
-            decimal ? RegExp(r'[0-9.]') : RegExp(r'[0-9]')),
+          decimal ? RegExp(r'[0-9.]') : RegExp(r'[0-9]'),
+        ),
       ],
-      decoration: petFieldDecoration(hintText: hint),
+      decoration: petFieldDecoration(
+        hintText: required
+            ? _requiredLabel(language, hint)
+            : _optionalLabel(language, hint),
+      ),
     );
   }
 
@@ -390,8 +520,10 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
           children: [
             const Icon(Icons.event, size: 16, color: PawColors.purpleDark),
             const SizedBox(width: 8),
-            Text(label,
-                style: const TextStyle(fontSize: 13, color: PawColors.muted)),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 13, color: PawColors.muted),
+            ),
             const Spacer(),
             Text(
               '${DateFormat.yMMMd(language.rawValue).format(value)} '
@@ -421,13 +553,24 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
         ),
         child: Row(
           children: [
-            const Icon(Icons.notifications_active_outlined,
-                size: 16, color: PawColors.green),
+            const Icon(
+              Icons.notifications_active_outlined,
+              size: 16,
+              color: PawColors.green,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                L10n.text(language, 'Next one due', '次回の予定', '下次到期',
-                    '다음 예정일'),
+                _optionalLabel(
+                  language,
+                  L10n.text(
+                    language,
+                    'Next one due',
+                    '次回の予定',
+                    '下次到期',
+                    '다음 예정일',
+                  ),
+                ),
                 style: const TextStyle(fontSize: 13, color: PawColors.ink),
               ),
             ),
@@ -458,8 +601,12 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _fieldLabel(
+            _optionalLabel(
+              language,
               L10n.text(language, 'Photos', '写真', '照片', '사진'),
-              Icons.photo_library_outlined),
+            ),
+            Icons.photo_library_outlined,
+          ),
           const SizedBox(height: 4),
           Text(
             L10n.text(
@@ -503,8 +650,10 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
                 errorBuilder: (context, error, stack) => Container(
                   color: PawColors.lavender,
                   alignment: Alignment.center,
-                  child: const Icon(Icons.broken_image_outlined,
-                      color: PawColors.muted),
+                  child: const Icon(
+                    Icons.broken_image_outlined,
+                    color: PawColors.muted,
+                  ),
                 ),
               ),
             ),
@@ -551,14 +700,22 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
                 height: 20,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : const Icon(Icons.add_a_photo_outlined,
-                color: PawColors.purple, size: 22),
+            : const Icon(
+                Icons.add_a_photo_outlined,
+                color: PawColors.purple,
+                size: 22,
+              ),
       ),
     );
   }
 
-  Widget _fieldLabel(String title, IconData icon) =>
-      fieldLabel(title, icon);
+  Widget _fieldLabel(String title, IconData icon) => fieldLabel(title, icon);
+
+  String _requiredLabel(AppLanguage language, String label) =>
+      '$label · ${L10n.text(language, 'Required', '必須', '必填', '필수')}';
+
+  String _optionalLabel(AppLanguage language, String label) =>
+      '$label · ${L10n.text(language, 'Optional', '任意', '选填', '선택')}';
 
   Future<void> _pickOccurredAt() async {
     final date = await showDatePicker(
@@ -568,9 +725,10 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
       lastDate: DateTime.now(),
     );
     if (date == null || !mounted) return;
-    final time = await showTimePicker(
+    final time = await showPetTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_occurredAt),
+      language: context.read<AppLanguageStore>().language,
     );
     if (!mounted) return;
     setState(() {
@@ -625,15 +783,21 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
             ListTile(
               leading: const Icon(Icons.photo_camera, color: PawColors.purple),
               title: Text(
-                  L10n.text(language, 'Take a photo', '写真を撮る', '拍照', '사진 찍기')),
+                L10n.text(language, 'Take a photo', '写真を撮る', '拍照', '사진 찍기'),
+              ),
               onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
             ),
             ListTile(
-              leading:
-                  const Icon(Icons.photo_library, color: PawColors.purple),
-              title: Text(L10n.text(
-                  language, 'Choose from library', 'ライブラリから選ぶ', '从相册选择',
-                  '앨범에서 선택')),
+              leading: const Icon(Icons.photo_library, color: PawColors.purple),
+              title: Text(
+                L10n.text(
+                  language,
+                  'Choose from library',
+                  'ライブラリから選ぶ',
+                  '从相册选择',
+                  '앨범에서 선택',
+                ),
+              ),
               onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
             ),
           ],
@@ -671,9 +835,15 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(L10n.text(
-            language, 'Remove this photo?', 'この写真を削除しますか？', '删除这张照片？',
-            '이 사진을 삭제할까요?')),
+        title: Text(
+          L10n.text(
+            language,
+            'Remove this photo?',
+            'この写真を削除しますか？',
+            '删除这张照片？',
+            '이 사진을 삭제할까요?',
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -691,8 +861,7 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
     );
     if (confirmed != true) return;
     setState(() {
-      _attachments =
-          _attachments.where((a) => a.id != attachment.id).toList();
+      _attachments = _attachments.where((a) => a.id != attachment.id).toList();
     });
   }
 
@@ -704,12 +873,30 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
     return value.isEmpty ? null : value;
   }
 
-  Future<void> _save(CareStore store) async {
+  Future<void> _save(CareStore store, AppLanguage language) async {
     final caregiver = store.currentCaregiver;
     final pet = store.household?.pets.where((p) => p.id == _petId).firstOrNull;
     if (caregiver == null || pet == null) return;
     final existing = widget.record;
     final isClinic = _type.hasClinicDetails;
+    final weight = _parseDouble(_weight);
+    if (_type == HealthRecordType.weight && weight == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            L10n.text(
+              language,
+              'Enter a weight before saving.',
+              '保存する前に体重を入力してください。',
+              '保存前请输入体重。',
+              '저장하기 전에 체중을 입력해 주세요.',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    final enteredTitle = _title.text.trim();
 
     final record = HealthRecord(
       id: _recordId,
@@ -717,7 +904,9 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
       petNameSnapshot: pet.name,
       type: _type,
       occurredAt: _occurredAt,
-      title: _title.text.trim(),
+      title: enteredTitle.isEmpty
+          ? L10n.healthRecordTypeTitle(language, _type)
+          : enteredTitle,
       clinicName: isClinic || _type.hasNextDue ? _trimmedOrNull(_clinic) : null,
       vetName: isClinic ? _trimmedOrNull(_vet) : null,
       diagnosis: _type.hasDiagnosis || _type == HealthRecordType.labResult
@@ -729,7 +918,7 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
       productName: _type.hasNextDue ? _trimmedOrNull(_productName) : null,
       lotNumber: _type.hasNextDue ? _trimmedOrNull(_lotNumber) : null,
       nextDueAt: _type.hasNextDue ? _nextDueAt : null,
-      weightKg: _type == HealthRecordType.weight ? _parseDouble(_weight) : null,
+      weightKg: _type == HealthRecordType.weight ? weight : null,
       temperatureC: _type == HealthRecordType.symptom
           ? _parseDouble(_temperature)
           : null,

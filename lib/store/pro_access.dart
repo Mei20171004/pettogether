@@ -71,8 +71,13 @@ class ProAccess extends ChangeNotifier {
   /// True when somebody else in the household is paying.
   bool get isSharedFromHousehold => !_purchases.isPro && _householdPro.active;
 
+  bool get hasMultiPet =>
+      _purchases.hasMultiPet || _householdPro.multiPetActive;
+
+  bool get hasAi => _purchases.hasAi || _householdPro.aiActive;
+
   int get aiParseLimit =>
-      isPro ? ProLimits.proAiParsesPerMonth : ProLimits.freeAiParsesPerMonth;
+      hasAi ? ProLimits.proAiParsesPerMonth : ProLimits.freeAiParsesPerMonth;
 
   int get aiParsesUsed => _usage.countFor(EntitlementService.currentMonth());
 
@@ -81,7 +86,12 @@ class ProAccess extends ChangeNotifier {
     return left < 0 ? 0 : left;
   }
 
-  bool get canUseAi => aiParsesLeft > 0;
+  bool get canUseAi => hasAi && aiParsesLeft > 0;
+
+  bool get canAddPet {
+    final petCount = _care.household?.pets.length ?? 0;
+    return hasMultiPet || petCount < ProLimits.freePets;
+  }
 
   /// The free tier keeps text-only medical records; photos cost storage, so
   /// they are the one health limit that is also enforced by Security Rules.
@@ -168,7 +178,8 @@ class ProAccess extends ChangeNotifier {
   /// [CareStore] cannot turn into a rebuild loop.
   void _emit() {
     final signature =
-        '$isPro|$aiParsesUsed|$aiParseLimit|$activeMedicationCourses';
+        '$isPro|$hasMultiPet|$hasAi|$aiParsesUsed|$aiParseLimit|'
+        '$activeMedicationCourses|${_care.household?.pets.length}';
     if (signature == _lastSignature) return;
     _lastSignature = signature;
     notifyListeners();

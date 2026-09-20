@@ -21,7 +21,7 @@ class PurchaseStore extends ChangeNotifier {
   bool _configured = false;
   bool _isLoadingOfferings = false;
   bool _isPurchasing = false;
-  bool _isPro = false;
+  Set<String> _activeEntitlementIds = const {};
   List<Package> _packages = const [];
   String? _lastError;
 
@@ -30,7 +30,11 @@ class PurchaseStore extends ChangeNotifier {
   bool get isAvailable => _configured;
   bool get isLoadingOfferings => _isLoadingOfferings;
   bool get isPurchasing => _isPurchasing;
-  bool get isPro => _isPro;
+  bool get isPro => hasEntitlement(AppConfig.proEntitlementId);
+  bool get hasMultiPet => hasEntitlement(AppConfig.multiPetEntitlementId);
+  bool get hasAi => hasEntitlement(AppConfig.aiEntitlementId);
+  bool hasEntitlement(String entitlementId) =>
+      _activeEntitlementIds.contains(entitlementId);
   List<Package> get packages => _packages;
   String? get lastError => _lastError;
 
@@ -103,16 +107,19 @@ class PurchaseStore extends ChangeNotifier {
     }
   }
 
-  /// Returns true when the purchase completed and unlocked Pro. Returns false
-  /// when the user cancelled; rethrows other SDK errors.
-  Future<bool> purchase(Package package) async {
+  /// Returns true when the purchase completed and unlocked [entitlementId].
+  /// Returns false when the user cancelled; rethrows other SDK errors.
+  Future<bool> purchase(
+    Package package, {
+    String entitlementId = AppConfig.proEntitlementId,
+  }) async {
     if (!_configured || _isPurchasing) return false;
     _isPurchasing = true;
     notifyListeners();
     try {
       final result = await Purchases.purchase(PurchaseParams.package(package));
       _applyCustomerInfo(result.customerInfo);
-      return _isPro;
+      return hasEntitlement(entitlementId);
     } on PlatformException catch (e) {
       final code = PurchasesErrorHelper.getErrorCode(e);
       if (code == PurchasesErrorCode.purchaseCancelledError) return false;
@@ -124,14 +131,16 @@ class PurchaseStore extends ChangeNotifier {
     }
   }
 
-  /// Returns true when a previous purchase was found and Pro is active.
-  Future<bool> restore() async {
+  /// Returns true when a previous purchase restored [entitlementId].
+  Future<bool> restore({
+    String entitlementId = AppConfig.proEntitlementId,
+  }) async {
     if (!_configured || _isPurchasing) return false;
     _isPurchasing = true;
     notifyListeners();
     try {
       _applyCustomerInfo(await Purchases.restorePurchases());
-      return _isPro;
+      return hasEntitlement(entitlementId);
     } on PlatformException catch (e) {
       _lastError = e.message ?? PurchasesErrorHelper.getErrorCode(e).name;
       rethrow;
@@ -142,11 +151,9 @@ class PurchaseStore extends ChangeNotifier {
   }
 
   void _applyCustomerInfo(CustomerInfo info) {
-    final active = info.entitlements.active.containsKey(
-      AppConfig.proEntitlementId,
-    );
-    if (active != _isPro) {
-      _isPro = active;
+    final active = info.entitlements.active.keys.toSet();
+    if (!setEquals(active, _activeEntitlementIds)) {
+      _activeEntitlementIds = active;
       notifyListeners();
     }
   }

@@ -9,6 +9,7 @@ import '../../store/care_store.dart';
 import '../../theme/app_theme.dart';
 import '../add_task_view.dart';
 import '../widgets/common.dart';
+import '../widgets/medication_adherence_chart.dart';
 import '../widgets/task_card.dart';
 import '../widgets/weight_chart.dart';
 import 'health_record_detail_view.dart';
@@ -42,17 +43,39 @@ class _PetHealthSectionState extends State<PetHealthSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          PetSectionTitle(
+            title: L10n.text(language, 'Health overview', '健康サマリー',
+                '健康概览', '건강 요약'),
+          ),
+          const SizedBox(height: 12),
           _summaryCard(store, pet, language),
+          const SizedBox(height: 20),
+          PetSectionTitle(
+            title: L10n.text(language, 'Health trends', '健康の推移',
+                '健康趋势', '건강 추이'),
+            detail: L10n.text(language, 'From recorded data', '記録データ',
+                '基于已记录数据', '기록 데이터'),
+          ),
+          const SizedBox(height: 12),
+          MedicationAdherenceChart(
+            store: store,
+            petId: pet.id,
+            language: language,
+          ),
+          const SizedBox(height: 12),
+          PetSectionTitle(
+            title: L10n.text(language, 'Weight trend', '体重の推移',
+                '体重趋势', '체중 추이'),
+            detail: pet.weightKg == null
+                ? null
+                : '${pet.weightKg!.toStringAsFixed(1)} kg',
+          ),
+          const SizedBox(height: 10),
+          WeightChart(pet: pet, months: 6, language: language, height: 190),
           const SizedBox(height: 20),
           _medicationSection(context, store, pet, language),
           const SizedBox(height: 20),
           _historySection(context, store, pet, language),
-          const SizedBox(height: 20),
-          PetSectionTitle(
-            title: L10n.text(language, 'Weight', '体重', '体重', '체중'),
-          ),
-          const SizedBox(height: 12),
-          WeightChart(pet: pet, months: 6, language: language, height: 200),
           const SizedBox(height: 22),
           ElevatedButton.icon(
             style: pawPrimaryButtonStyle(),
@@ -390,9 +413,14 @@ class _PetHealthSectionState extends State<PetHealthSection> {
     Pet pet,
     AppLanguage language,
   ) {
-    final records = store.recordsForPet(pet.id, type: _typeFilter);
-    final present = store
+    final historyRecords = store
         .recordsForPet(pet.id)
+        .where((record) => !record.type.isCourseGenerated)
+        .toList();
+    final records = _typeFilter == null
+        ? historyRecords
+        : historyRecords.where((record) => record.type == _typeFilter).toList();
+    final present = historyRecords
         .map((r) => r.type)
         .toSet()
         .toList()

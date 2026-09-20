@@ -58,8 +58,10 @@ Future<void> _activateAppCheck() async {
           ? const AndroidDebugProvider()
           : const AndroidPlayIntegrityProvider(),
     );
-  } catch (_) {
-    // Missing App Attest capability or an unregistered app; keep going.
+  } catch (error, stackTrace) {
+    // Missing App Attest capability or an unregistered app; keep the rest of
+    // the app usable, but retain the evidence needed to diagnose AI 403s.
+    debugPrint('Firebase App Check activation failed: $error\n$stackTrace');
   }
 }
 

@@ -321,9 +321,9 @@ enum HealthRecordType {
       this == HealthRecordType.surgery ||
       this == HealthRecordType.labResult;
 
-  /// Written automatically when a medication course is created, so a course
-  /// shows up in the history next to the visit that prescribed it. Not offered
-  /// in the record editor's type picker — it is owned by the course.
+  /// Written automatically when a medication course is created so reports can
+  /// include it. The Health screen presents it in Medication rather than the
+  /// medical-history list, and the record editor never offers it directly.
   bool get isCourseGenerated => this == HealthRecordType.medication;
 
   /// Types that recur on a schedule and therefore deserve a "next due" date.

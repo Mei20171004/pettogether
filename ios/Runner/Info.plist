@@ -24,10 +24,14 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan a one-time pettogether household invitation QR code.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a photo for your pet profile.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

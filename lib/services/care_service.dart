@@ -26,6 +26,7 @@ enum CareServiceErrorType {
   notRequestRecipient,
   notRequestOwner,
   invalidTransition,
+  invalidInvitationLink,
   invitationNotFound,
   invitationExpired,
   invitationAlreadyClaimed,
@@ -103,6 +104,8 @@ class CareServiceError implements Exception {
         return 'Only the caregiver who sent this request can cancel it.';
       case CareServiceErrorType.invalidTransition:
         return 'This task changed before your action finished. Refresh and try again.';
+      case CareServiceErrorType.invalidInvitationLink:
+        return 'This invitation link is invalid. Ask the household owner to share it again.';
       case CareServiceErrorType.invitationNotFound:
         return "We couldn't find that invitation. It may have expired or been revoked.";
       case CareServiceErrorType.invitationExpired:
@@ -177,6 +180,11 @@ abstract class CareService {
   });
 
   Future<void> addTask(CareTask task, String householdID);
+
+  Future<void> updateTask(CareTask task, String householdID);
+
+  Future<void> deleteTask(CareTask task, String householdID);
+
   Future<void> addRoutine(CareRoutine routine, String householdID);
 
   /// Replaces a routine in place, keeping its id so today's occurrence keeps
@@ -241,8 +249,8 @@ abstract class CareService {
     Caregiver caregiver,
   );
 
-  /// Marks a single routine occurrence as skipped without touching the
-  /// routine itself. Persists an override task document at the occurrence id.
+  /// Marks a task as skipped. Routine occurrences are persisted as override
+  /// documents; one-off tasks update their existing document.
   ///
   /// Medication doses pass a [reason]: "no walk today" needs no explanation,
   /// a missed dose does, and "refused it twice, vomited once" is a finding a
@@ -255,8 +263,8 @@ abstract class CareService {
     String? note,
   });
 
-  /// Restores a previously skipped (or otherwise overridden) occurrence back
-  /// to its routine-derived state (unclaimed).
+  /// Restores a skipped task to the unclaimed state. Routine overrides are
+  /// deleted so the occurrence can be regenerated.
   Future<void> restoreTaskOccurrence(
     CareTask task,
     String householdID,

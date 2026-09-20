@@ -30,9 +30,20 @@ const invalidTokenErrors = new Set([
 /// `firebase functions:secrets:set REVENUECAT_WEBHOOK_SECRET`.
 const revenuecatWebhookSecret = defineSecret("REVENUECAT_WEBHOOK_SECRET");
 
-/// Only this RevenueCat entitlement unlocks Pro. Events that carry a
-/// non-empty `entitlement_ids` without it belong to some other product.
 const proEntitlementId = "pet_together_pro";
+const multiPetEntitlementId = "pet_together_multi_pet";
+const aiEntitlementId = "pet_together_ai";
+const supportedEntitlementIds = new Set([
+  proEntitlementId,
+  multiPetEntitlementId,
+  aiEntitlementId,
+]);
+const productEntitlementIds = new Map([
+  ["pettogether_pro_monthly", proEntitlementId],
+  ["pettogether_pro_yearly", proEntitlementId],
+  ["pettogether_multi_pet_monthly", multiPetEntitlementId],
+  ["pettogether_ai_monthly", aiEntitlementId],
+]);
 
 /// Event types that grant access. `expiration_at_ms`, when present, still has
 /// to be in the future.
@@ -318,9 +329,11 @@ exports.revenuecatWebhook = onRequest(
     const entitlementIds = Array.isArray(event.entitlement_ids)
       ? event.entitlement_ids.filter((id) => typeof id === "string")
       : null;
-    if (entitlementIds && entitlementIds.length > 0 &&
-        !entitlementIds.includes(proEntitlementId)) {
-      logger.info("RevenueCat webhook ignored: not the pro entitlement", {
+    const productId = typeof event.product_id === "string" ? event.product_id : null;
+    const entitlementId = productEntitlementIds.get(productId) ||
+      entitlementIds?.find((id) => supportedEntitlementIds.has(id)) || null;
+    if (entitlementId === null) {
+      logger.info("RevenueCat webhook ignored: unsupported entitlement", {
         eventType,
         uid,
         entitlementIds,
@@ -338,14 +351,24 @@ exports.revenuecatWebhook = onRequest(
     }
 
     try {
+      const entitlement = {
+        active,
+        expiresAt,
+        productId,
+        store: typeof event.store === "string" ? event.store : null,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      const update = {
+        entitlements: { [entitlementId]: entitlement },
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      // Keep the existing health-Pro fields during the migration so deployed
+      // clients and Security Rules continue to recognize that entitlement.
+      if (entitlementId === proEntitlementId) {
+        Object.assign(update, entitlement);
+      }
       await db.collection("entitlements").doc(uid).set(
-        {
-          active,
-          expiresAt,
-          productId: typeof event.product_id === "string" ? event.product_id : null,
-          store: typeof event.store === "string" ? event.store : null,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
+        update,
         { merge: true },
       );
       const households = await recomputeHouseholdsForMember(uid);
@@ -353,6 +376,7 @@ exports.revenuecatWebhook = onRequest(
         eventType,
         uid,
         active,
+        entitlementId,
         households,
       });
       response.status(200).send("ok");
@@ -428,9 +452,7 @@ async function recomputeHouseholdsForMember(uid) {
   return households.size;
 }
 
-/// A household is Pro when any of its members has an active entitlement. The
-/// mirror exists so Security Rules and the UI can answer "is this household
-/// Pro?" with a single document read instead of a fan-out over members.
+/// Mirrors health Pro and both add-ons for every member of the household.
 async function recomputeHouseholdPro(householdReference) {
   const members = await householdReference.collection("members").get();
   const memberIds = [];
@@ -441,12 +463,14 @@ async function recomputeHouseholdPro(householdReference) {
     if (!memberIds.includes(id)) memberIds.push(id);
   }
 
-  let active = false;
-  let sponsorUid = null;
-  let expiresAt = null;
-  // A non-expiring active entitlement (lifetime, or a grant with no
-  // expiration) outranks every dated one, so the mirror keeps a null expiry.
-  let unbounded = false;
+  const states = new Map(
+    [...supportedEntitlementIds].map((id) => [id, {
+      active: false,
+      sponsorUid: null,
+      expiresAt: null,
+      unbounded: false,
+    }]),
+  );
 
   for (const group of chunks(memberIds, 300)) {
     if (group.length === 0) continue;
@@ -454,28 +478,48 @@ async function recomputeHouseholdPro(householdReference) {
       ...group.map((id) => db.collection("entitlements").doc(id)),
     );
     for (const entitlement of entitlements) {
-      if (!entitlement.exists || entitlement.data().active !== true) continue;
-      if (!active) {
-        active = true;
-        sponsorUid = entitlement.id;
-      }
-      const memberExpiry = entitlement.data().expiresAt || null;
-      if (!memberExpiry) {
-        unbounded = true;
-      } else if (!unbounded &&
-          (expiresAt === null || memberExpiry.toMillis() > expiresAt.toMillis())) {
-        expiresAt = memberExpiry;
+      if (!entitlement.exists) continue;
+      const data = entitlement.data();
+      for (const entitlementId of supportedEntitlementIds) {
+        const record = data.entitlements?.[entitlementId] ||
+          (entitlementId === proEntitlementId ? data : null);
+        if (record?.active !== true) continue;
+        const state = states.get(entitlementId);
+        if (!state.active) {
+          state.active = true;
+          state.sponsorUid = entitlement.id;
+        }
+        const memberExpiry = record.expiresAt || null;
+        if (!memberExpiry) {
+          state.unbounded = true;
+        } else if (!state.unbounded &&
+            (state.expiresAt === null ||
+             memberExpiry.toMillis() > state.expiresAt.toMillis())) {
+          state.expiresAt = memberExpiry;
+        }
       }
     }
   }
-  if (unbounded) expiresAt = null;
+  for (const state of states.values()) {
+    if (state.unbounded) state.expiresAt = null;
+  }
+
+  const health = states.get(proEntitlementId);
+  const multiPet = states.get(multiPetEntitlementId);
+  const ai = states.get(aiEntitlementId);
 
   // Merge: `legacy` is owned by scripts/backfill_legacy_pro.js.
   await householdReference.collection("private").doc("pro").set(
     {
-      active,
-      sponsorUid,
-      expiresAt,
+      active: health.active,
+      sponsorUid: health.sponsorUid,
+      expiresAt: health.expiresAt,
+      multiPetActive: multiPet.active,
+      multiPetSponsorUid: multiPet.sponsorUid,
+      multiPetExpiresAt: multiPet.expiresAt,
+      aiActive: ai.active,
+      aiSponsorUid: ai.sponsorUid,
+      aiExpiresAt: ai.expiresAt,
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },

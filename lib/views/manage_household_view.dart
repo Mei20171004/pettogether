@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../l10n/l10n.dart';
 import '../models/care_catalog.dart';
@@ -10,6 +11,7 @@ import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../store/care_store.dart';
+import '../store/pro_access.dart';
 import '../theme/app_theme.dart';
 import 'pro_view.dart';
 import 'widgets/common.dart';
@@ -222,6 +224,30 @@ class ManageHouseholdView extends StatelessWidget {
                             label: Text(L10n.text(language, 'Copy link',
                                 'リンクをコピー', '复制链接', '링크 복사')),
                           ),
+                        ),
+                        const SizedBox(width: 10),
+                        IconButton.outlined(
+                          tooltip: L10n.text(language, 'Share invitation',
+                              '招待を共有', '分享邀请', '초대 공유'),
+                          onPressed: () async {
+                            final box = context.findRenderObject() as RenderBox?;
+                            await SharePlus.instance.share(
+                              ShareParams(
+                                text: invitation.deepLink,
+                                subject: L10n.text(
+                                  language,
+                                  'Join my pettogether household',
+                                  'pettogether の家族に参加',
+                                  '加入我的 pettogether 家庭',
+                                  '내 pettogether 가족에 참여하세요',
+                                ),
+                                sharePositionOrigin: box == null
+                                    ? null
+                                    : box.localToGlobal(Offset.zero) & box.size,
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.ios_share_rounded),
                         ),
                         const SizedBox(width: 10),
                         IconButton.outlined(
@@ -608,6 +634,20 @@ class ManageHouseholdView extends StatelessWidget {
     AppLanguage language, {
     Pet? pet,
   }) async {
+    if (pet == null && !context.read<ProAccess>().canAddPet) {
+      await showProPaywall(
+        context,
+        feature: ProFeature.multiPet,
+        reason: L10n.text(
+          language,
+          'Your first pet is free. Adding a second pet requires the ¥300/month multi-pet plan.',
+          '1匹目は無料です。2匹目の追加には月額300円の複数ペットプランが必要です。',
+          '第 1 只宠物免费；添加第 2 只需要订阅每月 ¥300 的多宠物功能。',
+          '첫 반려동물은 무료이며, 두 번째 반려동물부터 월 ¥300 구독이 필요합니다.',
+        ),
+      );
+      return;
+    }
     final name = TextEditingController(text: pet?.name ?? '');
     final age = TextEditingController(text: pet?.ageYears?.toString() ?? '');
     final weight =

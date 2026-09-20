@@ -12,6 +12,7 @@ import '../theme/app_theme.dart';
 import '../utils/id.dart';
 import 'health/medication_details_form.dart';
 import 'widgets/common.dart';
+import 'widgets/pet_time_picker.dart';
 import 'pro_view.dart';
 
 class AddTaskView extends StatefulWidget {
@@ -525,9 +526,10 @@ class _AddTaskViewState extends State<AddTaskView> {
   }
 
   Future<void> _pickTime() async {
-    final picked = await showTimePicker(
+    final picked = await showPetTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: _dueDate.hour, minute: _dueDate.minute),
+      language: context.read<AppLanguageStore>().language,
     );
     if (picked != null) {
       setState(() {

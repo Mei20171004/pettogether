@@ -4,8 +4,11 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 
-// Matches the entitlement attached to both products in RevenueCat.
-const dashboardEntitlement = "pet_together_pro";
+const dashboardEntitlements = {
+  health: "pet_together_pro",
+  multiPet: "pet_together_multi_pet",
+  ai: "pet_together_ai",
+};
 
 function webhookHarness() {
   const writes = [];
@@ -53,22 +56,40 @@ function webhookHarness() {
   };
 }
 
-test("client checks the entitlement attached to the RevenueCat products", () => {
+test("client checks the three RevenueCat entitlements", () => {
   const config = readFileSync(path.join(__dirname, "../../lib/config/app_config.dart"), "utf8");
-  const identifier = config.match(/proEntitlementId\s*=\s*'([^']+)'/)[1];
-  assert.equal(identifier, dashboardEntitlement);
+  assert.equal(config.match(/proEntitlementId\s*=\s*'([^']+)'/)[1], dashboardEntitlements.health);
+  assert.equal(config.match(/multiPetEntitlementId\s*=\s*'([^']+)'/)[1], dashboardEntitlements.multiPet);
+  assert.equal(config.match(/aiEntitlementId\s*=\s*'([^']+)'/)[1], dashboardEntitlements.ai);
 });
 
 for (const product of ["pettogether_pro_monthly", "pettogether_pro_yearly"]) {
   test(`${product} purchase grants Pro`, async () => {
     const harness = webhookHarness();
-    const response = await harness.send(product, dashboardEntitlement);
+    const response = await harness.send(product, dashboardEntitlements.health);
     assert.equal(response.statusCode, 200);
     assert.equal(response.body, "ok");
     assert.equal(harness.writes.length, 1);
     assert.equal(harness.writes[0].collection, "entitlements");
     assert.equal(harness.writes[0].data.active, true);
     assert.equal(harness.writes[0].data.productId, product);
+  });
+}
+
+for (const [product, entitlement] of [
+  ["pettogether_multi_pet_monthly", dashboardEntitlements.multiPet],
+  ["pettogether_ai_monthly", dashboardEntitlements.ai],
+]) {
+  test(`${product} grants only its own add-on`, async () => {
+    const harness = webhookHarness();
+    const response = await harness.send(product, entitlement);
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body, "ok");
+    assert.equal(harness.writes.length, 1);
+    assert.equal(harness.writes[0].collection, "entitlements");
+    assert.equal(harness.writes[0].data.entitlements[entitlement].active, true);
+    assert.equal(harness.writes[0].data.entitlements[entitlement].productId, product);
+    assert.equal(harness.writes[0].data.active, undefined);
   });
 }
 
@@ -81,8 +102,24 @@ test("an unrelated entitlement does not grant Pro", async () => {
 
 test("expiration of the configured entitlement revokes Pro", async () => {
   const harness = webhookHarness();
-  const response = await harness.send("pettogether_pro_monthly", dashboardEntitlement, "EXPIRATION", Date.now() - 1);
+  const response = await harness.send("pettogether_pro_monthly", dashboardEntitlements.health, "EXPIRATION", Date.now() - 1);
   assert.equal(response.body, "ok");
   assert.equal(harness.writes.length, 1);
   assert.equal(harness.writes[0].data.active, false);
+});
+
+test("expiration revokes only the matching add-on", async () => {
+  const harness = webhookHarness();
+  const response = await harness.send(
+    "pettogether_ai_monthly",
+    dashboardEntitlements.ai,
+    "EXPIRATION",
+    Date.now() - 1,
+  );
+  assert.equal(response.body, "ok");
+  assert.equal(
+    harness.writes[0].data.entitlements[dashboardEntitlements.ai].active,
+    false,
+  );
+  assert.equal(harness.writes[0].data.active, undefined);
 });

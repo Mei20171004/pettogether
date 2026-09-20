@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n.dart';
@@ -44,8 +44,15 @@ class _RootViewState extends State<RootView> {
       builder: (context) {
         final language = context.read<AppLanguageStore>().language;
         return AlertDialog(
-          title: Text(L10n.text(language, 'Something went wrong',
-              'エラーが発生しました', '出了点问题', '문제가 발생했습니다')),
+          title: Text(
+            L10n.text(
+              language,
+              'Something went wrong',
+              'エラーが発生しました',
+              '出了点问题',
+              '문제가 발생했습니다',
+            ),
+          ),
           content: Text(message),
           actions: [
             TextButton(
@@ -73,7 +80,7 @@ class _RootViewState extends State<RootView> {
           children: [
             const PetScreenBackground(),
             if (store.isRestoringSession)
-              const _LoadingView()
+              const StartupBrandView()
             else if (store.household == null)
               const CreateJoinView()
             else
@@ -85,8 +92,8 @@ class _RootViewState extends State<RootView> {
   }
 }
 
-class _LoadingView extends StatelessWidget {
-  const _LoadingView();
+class StartupBrandView extends StatelessWidget {
+  const StartupBrandView({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -94,26 +101,36 @@ class _LoadingView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 68,
-            height: 68,
+          DecoratedBox(
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: [
+              borderRadius: BorderRadius.circular(26),
+              boxShadow: const [
                 BoxShadow(
-                  color: PawColors.purple.withValues(alpha: 0.15),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
+                  color: Color(0x267D6BE8),
+                  blurRadius: 20,
+                  offset: Offset(0, 8),
                 ),
               ],
             ),
-            child: const Icon(Icons.pets, size: 30, color: PawColors.purple),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(26),
+              child: Image.asset(
+                'assets/images/app_icon.png',
+                key: const ValueKey('startup_brand_icon'),
+                width: 104,
+                height: 104,
+                fit: BoxFit.cover,
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           const Text(
-            'Loading your household…',
-            style: TextStyle(color: PawColors.muted),
+            'PetTogether',
+            style: TextStyle(
+              color: PawColors.ink,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -215,20 +232,40 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
     );
   }
 
-  /// The AI parser is metered: the free tier gets a few parses a month so the
-  /// feature can be tried, and Pro raises the ceiling. The check runs before
-  /// the dialog opens so nobody types out a plan only to be told it costs money.
+  /// AI entry has its own subscription and a monthly fair-use ceiling. The
+  /// check runs before the dialog opens so nobody types out a plan only to be
+  /// told it costs money.
   Future<void> _startAi(BuildContext context) async {
     final access = context.read<ProAccess>();
     final language = context.read<AppLanguageStore>().language;
-    if (!access.canUseAi) {
-      await showProPaywall(context, reason: L10n.text(
+    if (!access.hasAi) {
+      await showProPaywall(
+        context,
+        reason: L10n.text(
           language,
-          'You have used this month\u2019s free AI entries. Pro raises the limit.',
-          '今月の無料AI入力を使い切りました。Proで上限が増えます。',
-          '本月的免费 AI 录入已用完，升级 Pro 可提升上限。',
-          '이번 달 무료 AI 입력을 모두 사용했습니다. Pro로 한도를 늘리세요.',
-        ));
+          'AI care entry requires the ¥300/month AI plan.',
+          'AIケア入力には月額300円のAIプランが必要です。',
+          '使用 AI 护理录入需要订阅每月 ¥300 的 AI 功能。',
+          'AI 케어 입력에는 월 ¥300 AI 구독이 필요합니다.',
+        ),
+        feature: ProFeature.ai,
+      );
+      return;
+    }
+    if (!access.canUseAi) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            L10n.text(
+              language,
+              'The monthly AI usage limit has been reached. Please try again next month.',
+              '今月のAI利用上限に達しました。来月もう一度お試しください。',
+              '本月 AI 使用次数已达上限，请下个月再试。',
+              '이번 달 AI 사용 한도에 도달했습니다. 다음 달에 다시 시도해 주세요.',
+            ),
+          ),
+        ),
+      );
       return;
     }
     await _showAiDialog(context);
@@ -241,21 +278,22 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
     final text = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(L10n.text(language, 'AI assistant', 'AIアシスタント', 'AI 助手',
-            'AI 어시스턴트')),
-        // Free users need to see the meter before they spend a parse on it.
+        title: Text(
+          L10n.text(language, 'AI assistant', 'AIアシスタント', 'AI 助手', 'AI 어시스턴트'),
+        ),
+        // Subscribers can see the fair-use balance before spending a parse.
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (!access.isPro) ...[
+            if (access.hasAi) ...[
               Text(
                 L10n.text(
                   language,
-                  '${access.aiParsesLeft} of ${access.aiParseLimit} free entries left this month',
-                  '今月の無料入力は残り${access.aiParsesLeft}/${access.aiParseLimit}回',
-                  '本月免费录入剩余 ${access.aiParsesLeft}/${access.aiParseLimit} 次',
-                  '이번 달 무료 입력 ${access.aiParsesLeft}/${access.aiParseLimit}회 남음',
+                  '${access.aiParsesLeft} of ${access.aiParseLimit} AI entries left this month',
+                  '今月のAI入力は残り${access.aiParsesLeft}/${access.aiParseLimit}回',
+                  '本月 AI 录入剩余 ${access.aiParsesLeft}/${access.aiParseLimit} 次',
+                  '이번 달 AI 입력 ${access.aiParsesLeft}/${access.aiParseLimit}회 남음',
                 ),
                 style: const TextStyle(fontSize: 12, color: PawColors.muted),
               ),
@@ -281,13 +319,11 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: Text(
-                L10n.text(language, 'Cancel', 'キャンセル', '取消', '취소')),
+            child: Text(L10n.text(language, 'Cancel', 'キャンセル', '取消', '취소')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: Text(L10n.text(
-                language, 'Parse', '解析', '解析', '분석')),
+            child: Text(L10n.text(language, 'Parse', '解析', '解析', '분석')),
           ),
         ],
       ),
@@ -317,12 +353,68 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
           builder: (_) => AiResultView(result: result),
         ),
       );
-    } catch (error) {
+    } catch (error, stackTrace) {
       if (!context.mounted) return;
       Navigator.of(context).pop(); // close loading
+      debugPrint('AI parse failed: $error\n$stackTrace');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${L10n.text(language, 'Failed to parse', '解析に失敗', '解析失败', '분석 실패')}: $error')),
+        SnackBar(content: Text(_aiFailureMessage(language, error))),
       );
     }
+  }
+
+  String _aiFailureMessage(AppLanguage language, Object error) {
+    final kind = error is AiFailure ? error.kind : AiFailureKind.server;
+    return switch (kind) {
+      AiFailureKind.configuration => L10n.text(
+        language,
+        'AI setup is incomplete. Update the app, then contact support if it still fails.',
+        'AIの設定が完了していません。アプリを更新し、解決しない場合はサポートへご連絡ください。',
+        'AI 配置尚未完成。请先更新应用；若仍失败，请联系支持人员。',
+        'AI 설정이 완료되지 않았습니다. 앱을 업데이트한 뒤 계속 실패하면 지원팀에 문의해 주세요.',
+      ),
+      AiFailureKind.network => L10n.text(
+        language,
+        'Could not reach AI. Check your connection and try again.',
+        'AIに接続できませんでした。通信状況を確認してもう一度お試しください。',
+        '无法连接 AI。请检查网络后重试。',
+        'AI에 연결할 수 없습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.',
+      ),
+      AiFailureKind.authorization => L10n.text(
+        language,
+        'This app build could not be verified for AI. Reopen or update the app, then try again.',
+        'このアプリをAI用に確認できませんでした。アプリを再起動または更新して、もう一度お試しください。',
+        '当前应用版本未能通过 AI 验证。请重启或更新应用后重试。',
+        '이 앱 빌드의 AI 사용을 확인할 수 없습니다. 앱을 다시 열거나 업데이트한 뒤 시도해 주세요.',
+      ),
+      AiFailureKind.quota => L10n.text(
+        language,
+        'The AI usage limit has been reached. Please try again later.',
+        'AIの利用上限に達しました。しばらくしてからもう一度お試しください。',
+        'AI 使用量已达上限，请稍后重试。',
+        'AI 사용 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.',
+      ),
+      AiFailureKind.unsupportedRegion => L10n.text(
+        language,
+        'AI entry is not available in your region.',
+        'お住まいの地域ではAI入力を利用できません。',
+        '你所在的地区暂不支持 AI 录入。',
+        '현재 지역에서는 AI 입력을 사용할 수 없습니다.',
+      ),
+      AiFailureKind.invalidResponse => L10n.text(
+        language,
+        'AI returned an unusable result. Try again or describe the plan another way.',
+        'AIから利用できる結果が返りませんでした。再試行するか、別の表現で入力してください。',
+        'AI 返回的结果无法使用。请重试，或换一种方式描述计划。',
+        'AI가 사용할 수 없는 결과를 반환했습니다. 다시 시도하거나 다른 방식으로 설명해 주세요.',
+      ),
+      AiFailureKind.server => L10n.text(
+        language,
+        'AI is temporarily unavailable. Please try again later.',
+        'AIを一時的に利用できません。しばらくしてからもう一度お試しください。',
+        'AI 暂时不可用，请稍后重试。',
+        'AI를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.',
+      ),
+    };
   }
 }
