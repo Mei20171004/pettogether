@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fff9f3">
+  <meta name="description" content="PetTogether helps the people who love a pet share everyday care, health notes, and the little moments that matter.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="PetTogether — care feels better together">
+  <meta property="og:description" content="A warmer way to share the everyday care your pets count on.">
+  <meta property="og:image" content="pets.png">
+  <link rel="icon" type="image/png" href="app-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="script.js" defer></script>
+  <title>PetTogether — care feels better together</title>
+</head>
+<body>
+  <a class="skip" href="#main" data-t="skip">Skip to content</a>
+  <header class="header">
+    <a class="brand" href="#top" aria-label="PetTogether home"><img src="app-icon.png" alt=""><span>pettogether<b>.</b></span></a>
+    <nav aria-label="Main navigation">
+      <a href="#everyday" data-t="navDaily">Everyday care</a>
+      <a href="#health" data-t="navHealth">Health &amp; history</a>
+      <a href="#family" data-t="navFamily">For your people</a>
+    </nav>
+    <div class="header-end">
+      <label class="lang"><span class="sr-only" data-t="language">Language</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.7 2.5 4 5.5 4 9s-1.3 6.5-4 9c-2.7-2.5-4-5.5-4-9s1.3-6.5 4-9Z"/></svg><select id="lang" aria-label="Language"><option value="en">English</option><option value="ja">日本語</option><option value="zh">中文</option></select></label>
+      <a class="header-cta" href="#story"><span data-t="navDiscover">Discover the app</span> ↗</a>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero" id="top">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <div class="eyebrow"><span>✳</span><span data-t="heroEyebrow">A happier little world for your pet</span></div>
+          <h1><span data-t="heroTitle1">Care feels better</span><br><em data-t="heroTitle2">together.</em></h1>
+          <p data-t="heroBody">All the little things your pet needs, lovingly shared with the people who care.</p>
+          <a class="button primary" href="#story"><span data-t="heroCta">Meet PetTogether</span><span class="button-icon">↗</span></a>
+          <div class="hero-foot"><span class="dots"><i></i><i></i><i></i></span><span data-t="heroFoot">For pets, people, and everything in between.</span></div>
+        </div>
+        <div class="hero-art" aria-hidden="true"><div class="halo"></div><img src="pets.png" alt="" fetchpriority="high"><div class="bubble bubble-one"><span>♥</span><span data-t="bubbleOne">Loved, every day</span></div><div class="bubble bubble-two"><span>✿</span><span data-t="bubbleTwo">One happy household</span></div></div>
+      </div>
+      <div class="hero-scroll" aria-hidden="true"><span>01 / 04</span><i></i><span data-t="scroll">SCROLL TO EXPLORE</span></div>
+    </section>
+    <section class="story section reveal" id="story">
+      <div class="kicker"><i></i><span data-t="storyKicker">THE HEART OF PETTOGETHER</span></div>
+      <div class="story-grid"><h2 data-t="storyTitle">Because loving them<br>is a team effort.</h2><div><p data-t="storyBody">From breakfast bowls to bedtime medicine, the best care happens when everyone knows what matters today.</p><a class="text-link" href="#everyday"><span data-t="storyLink">See how it works</span> ↗</a></div></div>
+      <div class="ribbon"><span>♡</span><span data-t="ribbon1">little routines</span><b>✳</b><span data-t="ribbon2">big love</span><b>✳</b><span data-t="ribbon3">shared every day</span><span>♡</span></div>
+    </section>
+    <section class="daily section" id="everyday">
+      <div class="two-col">
+        <div class="reveal"><div class="kicker"><i></i><span data-t="dailyKicker">EVERYDAY, MADE EASIER</span></div><h2 data-t="dailyTitle">A little less to<br>remember. A lot<br><em>more to enjoy.</em></h2><p data-t="dailyBody">See what your pets need today, plan ahead on the calendar, and share each task without the back-and-forth.</p><div class="feature-lines"><div><small>01</small><span data-t="daily1">Daily and recurring care, all in one view</span><b>↗</b></div><div><small>02</small><span data-t="daily2">A clear calendar for every pet</span><b>↗</b></div><div><small>03</small><span data-t="daily3">Claim, hand off, skip, or restore a task</span><b>↗</b></div></div></div>
+        <div class="phone-stage reveal" role="img" aria-label="Illustration of the PetTogether Today screen"><span class="doodle d1">✳</span><span class="doodle d2">♡</span><div class="phone"><div class="phone-status"><span>9:41</span><span>●●● ▰</span></div><div class="phone-body"><small data-t="phoneHello">Good morning, Alex ☀️</small><h3 data-t="phoneTitle">Today with Mochi</h3><small data-t="phoneSub">A lovely day to care together</small><div class="progress"><div><span data-t="phoneProgress">Today's care</span><strong>2 / 4</strong></div><i><b></b></i></div><div class="phone-label"><span data-t="phoneNext">UP NEXT</span><span>✦</span></div><div class="task"><span class="emoji">🥣</span><div><strong data-t="task1">Breakfast time</strong><small data-t="task1sub">Mochi · 8:00 AM</small></div><span class="check done">✓</span></div><div class="task"><span class="emoji purple">🦮</span><div><strong data-t="task2">Morning walk</strong><small data-t="task2sub">Mochi · 9:30 AM</small></div><span class="check"></span></div><div class="task"><span class="emoji pink">💊</span><div><strong data-t="task3">Medicine</strong><small data-t="task3sub">Mochi · 12:00 PM</small></div><span class="check"></span></div><div class="phone-tip"><span>✦</span><span data-t="phoneTip">Everyone stays in the loop.</span></div></div><div class="phone-tabs"><span class="active">⌂<small data-t="tabToday">Today</small></span><span>▦<small data-t="tabCalendar">Calendar</small></span><span>♡<small data-t="tabHealth">Health</small></span><span>♧<small data-t="tabFamily">Family</small></span></div></div><div class="stage-caption" data-t="stageCaption">A calm home for the whole routine.</div></div>
+      </div>
+    </section>
+    <section class="health section" id="health">
+      <div class="health-head reveal"><div class="kicker"><i></i><span data-t="healthKicker">HEALTH, HELD WITH CARE</span></div><h2 data-t="healthTitle">The important details,<br><em>always close.</em></h2><p data-t="healthBody">Keep medicine, milestones, and medical notes together—so your pet's story is easy to follow and share with a vet.</p></div>
+      <div class="health-art reveal" aria-hidden="true"><div class="paper paper-back"><span>✚</span><strong data-t="paperBack">Mochi's health story</strong><i></i><i></i></div><div class="paper paper-front"><div class="paper-head"><span>♡</span><div><small data-t="paperLabel">HEALTH JOURNAL</small><strong data-t="paperTitle">Mochi is doing great</strong></div></div><div class="paper-row"><i class="orange"></i><div><strong data-t="paper1">Vaccination</strong><small data-t="paper1sub">Next date, always on hand</small></div><span>↗</span></div><div class="paper-row"><i class="blue"></i><div><strong data-t="paper2">Medication</strong><small data-t="paper2sub">Every dose, clearly recorded</small></div><span>↗</span></div><div class="paper-row"><i class="green"></i><div><strong data-t="paper3">Vet visits</strong><small data-t="paper3sub">A history you can bring along</small></div><span>↗</span></div></div><div class="seal">✳<small data-t="seal">made with<br>love</small></div></div>
+      <div class="health-foot reveal"><span data-t="health1">Medication reminders and dose history</span><b>✳</b><span data-t="health2">Vaccinations, visits, photos and weight</span><b>✳</b><span data-t="health3">A shareable vet visit PDF</span></div>
+    </section>
+    <section class="family section" id="family"><div class="two-col"><div class="family-art reveal" aria-hidden="true"><div class="orbit"></div><div class="orbit outer"></div><div class="center-icon"><img src="app-icon.png" alt=""></div><div class="avatar a">A</div><div class="avatar j">J</div><div class="avatar m">M</div><span class="heart h1">♥</span><span class="heart h2">♥</span></div><div class="family-copy reveal"><div class="kicker"><i></i><span data-t="familyKicker">BETTER TOGETHER</span></div><h2 data-t="familyTitle">Your whole circle,<br><em>in the know.</em></h2><p data-t="familyBody">Invite the people your pet trusts. Everyone can see what has been done, what is next, and who is taking care of it.</p><div class="family-lines"><div><b>↗</b><span data-t="family1">Invite by link or QR code, with owner approval</span></div><div><b>↗</b><span data-t="family2">Share responsibility across pets and people</span></div><div><b>↗</b><span data-t="family3">Gentle reminders keep everyone in sync</span></div></div></div></div></section>
+    <section class="ai section reveal"><div class="ai-icon" aria-hidden="true">✦</div><div><div class="kicker"><i></i><span data-t="aiKicker">A LITTLE HELP WHEN YOU NEED IT</span></div><h2 data-t="aiTitle">Say it simply.<br><em>Make it a plan.</em></h2></div><p data-t="aiBody">Type or speak a care instruction, and the AI assistant helps turn it into a schedule you can review.</p></section>
+    <section class="closing section"><span class="giant-heart" aria-hidden="true">♡</span><div class="reveal"><div class="kicker"><i></i><span data-t="closeKicker">A LITTLE MORE TOGETHER</span></div><h2 data-t="closeTitle">More moments with them.<br><em>Less to keep in your head.</em></h2><p data-t="closeBody">PetTogether makes space for what matters most: a pet who feels loved, every single day.</p><a class="button light" href="#top"><span data-t="closeCta">Back to the beginning</span><span class="button-icon">↑</span></a></div></section>
+  </main>
+  <footer><a class="brand" href="#top"><img src="app-icon.png" alt=""><span>pettogether<b>.</b></span></a><p data-t="footer">Made for the love we share with our pets.</p><span>© <span id="year"></span> PetTogether</span></footer>
+</body>
+</html>
