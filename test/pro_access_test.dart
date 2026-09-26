@@ -71,6 +71,22 @@ Future<({ProAccess access, CareStore care})> _freeUser() async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('expired household subscriptions no longer grant paid features', () {
+    final expired = DateTime.now().subtract(const Duration(seconds: 1));
+    final household = HouseholdPro(
+      active: true,
+      legacy: false,
+      multiPetActive: true,
+      aiActive: true,
+      expiresAt: expired,
+      multiPetExpiresAt: expired,
+      aiExpiresAt: expired,
+    );
+    expect(household.unlocked, isFalse);
+    expect(household.multiPetActiveNow, isFalse);
+    expect(household.aiActiveNow, isFalse);
+  });
+
   group('ProAccess, for a user who has not paid', () {
     test('starts locked out of the paid health features', () async {
       final (access: access, care: care) = await _freeUser();

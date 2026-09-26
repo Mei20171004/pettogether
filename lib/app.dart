@@ -64,6 +64,9 @@ class _PetTogetherAppState extends State<PetTogetherApp>
 
   StreamSubscription<Uri>? _appLinkSubscription;
   StreamSubscription<User?>? _authSubscription;
+  Future<void> _userInfoSyncQueue = Future<void>.value();
+  DateTime? _observedProPurchaseAt;
+  bool _observedPro = false;
   final AppLinks _appLinks = AppLinks();
   Uri? _pendingInvitationLink;
   String? _lastHandledInvitationLink;
@@ -77,21 +80,56 @@ class _PetTogetherAppState extends State<PetTogetherApp>
       widget.service,
       notificationService: widget.notifications,
     );
+    _observedPro = _purchases.isPro;
+    _purchases.addListener(_onPurchaseStateChanged);
     if (AppConfig.useFirebase && Firebase.apps.isNotEmpty) {
       _authSubscription = FirebaseAuth.instance.authStateChanges().listen((
         user,
       ) {
         unawaited(_proAccess.refreshFreeCoupon());
-        if (user != null) unawaited(_flushPendingInvitationLink());
+        if (user != null) {
+          _queueUserInfoSync(user.uid);
+          unawaited(_flushPendingInvitationLink());
+        }
       });
     }
     _initializeAppLinks();
+  }
+
+  void _onPurchaseStateChanged() {
+    if (!AppConfig.useFirebase || Firebase.apps.isEmpty) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final paidAt = _purchases.proLatestPurchaseAtFor(uid);
+    final isPro = _purchases.isPro;
+    if (paidAt == _observedProPurchaseAt && isPro == _observedPro) return;
+    _observedProPurchaseAt = paidAt;
+    _observedPro = isPro;
+    _queueUserInfoSync(uid);
+  }
+
+  void _queueUserInfoSync(String uid) {
+    _userInfoSyncQueue = _userInfoSyncQueue.then((_) async {
+      if (FirebaseAuth.instance.currentUser?.uid != uid) return;
+      try {
+        await EntitlementService().syncUserInfo(
+          uid,
+          latestProPurchaseAt: _purchases.proLatestPurchaseAtFor(uid),
+        );
+      } catch (error, stackTrace) {
+        debugPrint('User info refresh failed: $error\n$stackTrace');
+      }
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_proAccess.refreshFreeCoupon());
+      if (AppConfig.useFirebase && Firebase.apps.isNotEmpty) {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null) _queueUserInfoSync(uid);
+      }
     }
   }
 
@@ -154,6 +192,7 @@ class _PetTogetherAppState extends State<PetTogetherApp>
     WidgetsBinding.instance.removeObserver(this);
     _appLinkSubscription?.cancel();
     _authSubscription?.cancel();
+    _purchases.removeListener(_onPurchaseStateChanged);
     _store.dispose();
     widget.notifications?.dispose();
     _proAccess.dispose();

@@ -118,8 +118,15 @@ class _LoginViewState extends State<LoginView> {
                             ),
                           ],
                         ),
-                        child: const Icon(Icons.pets,
-                            size: 34, color: PawColors.purple),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(24),
+                          child: Image.asset(
+                            'assets/images/app_icon.png',
+                            width: 72,
+                            height: 72,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),

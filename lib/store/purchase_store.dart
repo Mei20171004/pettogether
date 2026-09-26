@@ -22,6 +22,8 @@ class PurchaseStore extends ChangeNotifier {
   bool _isLoadingOfferings = false;
   bool _isPurchasing = false;
   Set<String> _activeEntitlementIds = const {};
+  DateTime? _proLatestPurchaseAt;
+  String? _syncedUid;
   List<Package> _packages = const [];
   String? _lastError;
 
@@ -33,6 +35,8 @@ class PurchaseStore extends ChangeNotifier {
   bool get isPro => hasEntitlement(AppConfig.proEntitlementId);
   bool get hasMultiPet => hasEntitlement(AppConfig.multiPetEntitlementId);
   bool get hasAi => hasEntitlement(AppConfig.aiEntitlementId);
+  DateTime? proLatestPurchaseAtFor(String uid) =>
+      _syncedUid == uid ? _proLatestPurchaseAt : null;
   bool hasEntitlement(String entitlementId) =>
       _activeEntitlementIds.contains(entitlementId);
   List<Package> get packages => _packages;
@@ -76,14 +80,20 @@ class PurchaseStore extends ChangeNotifier {
     if (!_configured) return;
     try {
       if (uid == null) {
+        _syncedUid = null;
         if (!await Purchases.isAnonymous) {
           _applyCustomerInfo(await Purchases.logOut());
         }
+        notifyListeners();
         return;
       }
       if (await Purchases.appUserID != uid) {
         final result = await Purchases.logIn(uid);
         _applyCustomerInfo(result.customerInfo);
+      }
+      if (_syncedUid != uid) {
+        _syncedUid = uid;
+        notifyListeners();
       }
     } catch (e) {
       _lastError = e.toString();
@@ -152,8 +162,15 @@ class PurchaseStore extends ChangeNotifier {
 
   void _applyCustomerInfo(CustomerInfo info) {
     final active = info.entitlements.active.keys.toSet();
-    if (!setEquals(active, _activeEntitlementIds)) {
+    final purchaseDate =
+        info.entitlements.all[AppConfig.proEntitlementId]?.latestPurchaseDate;
+    final latestPurchaseAt = purchaseDate == null
+        ? null
+        : DateTime.tryParse(purchaseDate)?.toUtc();
+    if (!setEquals(active, _activeEntitlementIds) ||
+        latestPurchaseAt != _proLatestPurchaseAt) {
       _activeEntitlementIds = active;
+      _proLatestPurchaseAt = latestPurchaseAt;
       notifyListeners();
     }
   }

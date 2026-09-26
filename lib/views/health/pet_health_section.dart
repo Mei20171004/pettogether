@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import '../../l10n/l10n.dart';
 import '../../models/health.dart';
 import '../../models/models.dart';
+import '../../services/pro_menu_service.dart';
 import '../../store/care_store.dart';
+import '../../store/pro_access.dart';
 import '../../theme/app_theme.dart';
 import '../add_task_view.dart';
 import '../widgets/common.dart';
@@ -15,10 +17,9 @@ import '../widgets/weight_chart.dart';
 import 'health_record_detail_view.dart';
 import 'health_record_editor_view.dart';
 import 'medication_plan_detail_view.dart';
-import 'vet_visit_pack_view.dart';
+import 'pro_menu_web_view.dart';
 
-/// A single pet's health file: what it is taking, what has happened to it, and
-/// the button that turns all of that into something you can hand a vet.
+/// A single pet's health file and its available Pro menu actions.
 class PetHealthSection extends StatefulWidget {
   const PetHealthSection({super.key, required this.pet});
 
@@ -31,11 +32,13 @@ class PetHealthSection extends StatefulWidget {
 class _PetHealthSectionState extends State<PetHealthSection> {
   HealthRecordType? _typeFilter;
   bool _showPastCourses = false;
+  Stream<List<ProMenuItem>>? _menuStream;
 
   @override
   Widget build(BuildContext context) {
     final store = context.watch<CareStore>();
     final language = context.watch<AppLanguageStore>().language;
+    final hasProAccess = context.watch<ProAccess>().isPro;
     final pet = widget.pet;
 
     return SingleChildScrollView(
@@ -76,20 +79,58 @@ class _PetHealthSectionState extends State<PetHealthSection> {
           _medicationSection(context, store, pet, language),
           const SizedBox(height: 20),
           _historySection(context, store, pet, language),
-          const SizedBox(height: 22),
-          ElevatedButton.icon(
-            style: pawPrimaryButtonStyle(),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => VetVisitPackView(pet: pet),
-              ),
-            ),
-            icon: const Icon(Icons.description_outlined, size: 20),
-            label: Text(L10n.text(language, 'Build a vet visit pack',
-                '通院用まとめを作る', '生成就诊资料包', '진료용 자료 만들기')),
-          ),
+          if (hasProAccess) ...[
+            const SizedBox(height: 22),
+            _proMenuButtons(language, store, pet),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _proMenuButtons(AppLanguage language, CareStore store, Pet pet) {
+    _menuStream ??= ProMenuService().watchItems();
+    return StreamBuilder<List<ProMenuItem>>(
+      stream: _menuStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Text(
+            L10n.text(language, 'Could not load Pro menu',
+                'Proメニューを読み込めませんでした', '无法加载 Pro 菜单', 'Pro 메뉴를 불러올 수 없습니다'),
+            style: const TextStyle(color: PawColors.muted),
+            textAlign: TextAlign.center,
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final item in snapshot.data!) ...[
+              ElevatedButton.icon(
+                style: pawPrimaryButtonStyle(),
+                onPressed: () {
+                  if (!context.read<ProAccess>().isPro) return;
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ProMenuWebView(
+                        title: item.title(language),
+                        url: item.url,
+                        householdId: store.household!.id,
+                        petId: pet.id,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.open_in_browser, size: 20),
+                label: Text(item.title(language)),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ],
+        );
+      },
     );
   }
 

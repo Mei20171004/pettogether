@@ -7,18 +7,27 @@
 // format `<routineID>_yyyy-MM-dd`.
 const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onRequest } = require("firebase-functions/v2/https");
+const { onCall, onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
+const { getAuth } = require("firebase-admin/auth");
+const { issueWebSignInToken } = require("./web_sign_in");
 const crypto = require("crypto");
 
 initializeApp();
 
 const db = getFirestore();
 const region = "asia-northeast1";
+
+// Called only when an authenticated app user opens a trusted Hosting page.
+// The page signs in with the returned token through the WebView bridge.
+exports.issueWebSignInToken = onCall(
+  { region, minInstances: 0, maxInstances: 5 },
+  (request) => issueWebSignInToken(request, getAuth()),
+);
 const defaultTimeZone = "Asia/Tokyo";
 const invalidTokenErrors = new Set([
   "messaging/invalid-registration-token",

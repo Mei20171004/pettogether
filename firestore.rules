@@ -41,6 +41,46 @@ service cloud.firestore {
           == get(/databases/$(database)/documents/aiUsage/freecoupon).data.coupon;
     }
 
+    function ownPaidProActive(uid) {
+      return signedIn()
+        && uid == request.auth.uid
+        && exists(/databases/$(database)/documents/entitlements/$(uid))
+        && get(/databases/$(database)/documents/entitlements/$(uid)).data.get('active', false) == true
+        && (get(/databases/$(database)/documents/entitlements/$(uid)).data.get('expiresAt', null) == null
+            || get(/databases/$(database)/documents/entitlements/$(uid)).data.get('expiresAt', null) > request.time);
+    }
+
+    function validUserInfo(data, uid) {
+      return signedIn()
+        && uid == request.auth.uid
+        && data.keys().hasOnly([
+          'userId', 'userType', 'statusExpiresAt', 'couponActivatedAt',
+          'paidAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'userId', 'userType', 'statusExpiresAt', 'couponActivatedAt',
+          'paidAt', 'createdAt', 'updatedAt'
+        ])
+        && data.userId == uid
+        && data.createdAt is timestamp
+        && data.updatedAt == request.time
+        && (data.paidAt == null || data.paidAt is timestamp)
+        && (data.couponActivatedAt == null || data.couponActivatedAt is timestamp)
+        && ((!exists(/databases/$(database)/documents/freeCouponRedemptions/$(uid))
+             && data.couponActivatedAt == null)
+            || (exists(/databases/$(database)/documents/freeCouponRedemptions/$(uid))
+                && data.couponActivatedAt == get(/databases/$(database)/documents/freeCouponRedemptions/$(uid)).data.redeemedAt))
+        && ((ownPaidProActive(uid)
+             && data.userType == 'pro user'
+             && data.statusExpiresAt == get(/databases/$(database)/documents/entitlements/$(uid)).data.get('expiresAt', null))
+            || (!ownPaidProActive(uid) && freeCouponActive()
+                && data.userType == 'free coupon user'
+                && data.statusExpiresAt == get(/databases/$(database)/documents/aiUsage/freecoupon).data.enddate)
+            || (!ownPaidProActive(uid) && !freeCouponActive()
+                && data.userType == 'free user'
+                && data.statusExpiresAt == null));
+    }
+
     function validFreeCouponRedemption(data, uid) {
       return signedIn()
         && uid == request.auth.uid
@@ -64,13 +104,17 @@ service cloud.firestore {
     // first so the missing doc reads false instead of failing the rule.
     function proActive(householdId) {
       return freeCouponActive() || (exists(/databases/$(database)/documents/households/$(householdId)/private/pro)
-        && (get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('active', false) == true
+        && ((get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('active', false) == true
+             && (get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('expiresAt', null) == null
+                 || get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('expiresAt', null) > request.time))
             || get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('legacy', false) == true));
     }
 
     function multiPetActive(householdId) {
       return freeCouponActive() || (exists(/databases/$(database)/documents/households/$(householdId)/private/pro)
-        && get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('multiPetActive', false) == true);
+        && get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('multiPetActive', false) == true
+        && (get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('multiPetExpiresAt', null) == null
+            || get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('multiPetExpiresAt', null) > request.time));
     }
 
     function validHousehold(data) {
@@ -183,6 +227,24 @@ service cloud.firestore {
     match /entitlements/{uid} {
       allow get: if signedIn() && uid == request.auth.uid;
       allow list, write: if false;
+    }
+
+    // The app refreshes only its own status on launch and account actions.
+    // Rules verify the tier against server-owned paid and coupon sources.
+    match /userinfo/{uid} {
+      allow get: if signedIn() && uid == request.auth.uid;
+      allow list, delete: if false;
+      allow create: if validUserInfo(request.resource.data, uid)
+        && request.resource.data.createdAt == request.time;
+      allow update: if validUserInfo(request.resource.data, uid)
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    // Menu metadata contains public HTTPS pages. Only signed-in clients may
+    // enumerate it; the app presents entries when its ProAccess gate is active.
+    match /promenu/{menuId} {
+      allow get, list: if signedIn();
+      allow create, update, delete: if false;
     }
 
     // ---------------------------------------------------------------------

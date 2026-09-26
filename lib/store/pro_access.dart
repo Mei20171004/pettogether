@@ -45,6 +45,7 @@ class ProAccess extends ChangeNotifier {
   AiUsage _usage = AiUsage.empty;
   DateTime? _couponExpiresAt;
   Timer? _couponExpiryTimer;
+  Timer? _householdExpiryTimer;
   String? _householdId;
   String? _uid;
   StreamSubscription<HouseholdPro>? _proSubscription;
@@ -75,18 +76,19 @@ class ProAccess extends ChangeNotifier {
   /// True when access comes from the pre-launch grandfather flag rather than a
   /// live subscription. Useful for copy: these users are not "subscribers".
   bool get isLegacy =>
-      !_purchases.isPro && !_householdPro.active && _householdPro.legacy;
+      !_purchases.isPro && !_householdPro.activeNow && _householdPro.legacy;
 
   /// True when somebody else in the household is paying.
-  bool get isSharedFromHousehold => !_purchases.isPro && _householdPro.active;
+  bool get isSharedFromHousehold =>
+      !_purchases.isPro && _householdPro.activeNow;
 
   bool get hasMultiPet =>
       isFreeCouponActive ||
       _purchases.hasMultiPet ||
-      _householdPro.multiPetActive;
+      _householdPro.multiPetActiveNow;
 
   bool get hasAi =>
-      isFreeCouponActive || _purchases.hasAi || _householdPro.aiActive;
+      isFreeCouponActive || _purchases.hasAi || _householdPro.aiActiveNow;
 
   int get aiParseLimit =>
       hasAi ? ProLimits.proAiParsesPerMonth : ProLimits.freeAiParsesPerMonth;
@@ -161,9 +163,44 @@ class ProAccess extends ChangeNotifier {
       final expiresAt = await service.redeemFreeCoupon(uid, code);
       if (_uid != uid) return false;
       _setCouponExpiry(expiresAt);
+      if (expiresAt != null) {
+        try {
+          await service.syncUserInfo(
+            uid,
+            latestProPurchaseAt: _purchases.proLatestPurchaseAtFor(uid),
+          );
+        } catch (_) {
+          // Coupon access is already verified; next launch retries the summary.
+        }
+      }
       return expiresAt != null;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// A purchase may reach RevenueCat before its existing entitlement webhook
+  /// reaches Firestore. Retry briefly, then the next app launch rechecks it.
+  Future<void> syncUserInfoAfterPurchase() async {
+    final uid = _currentUid();
+    final service = _entitlements;
+    if (uid == null || service == null) return;
+    for (final delay in [
+      Duration.zero,
+      const Duration(seconds: 2),
+      const Duration(seconds: 4),
+    ]) {
+      if (delay != Duration.zero) await Future<void>.delayed(delay);
+      if (_currentUid() != uid) return;
+      try {
+        final status = await service.syncUserInfo(
+          uid,
+          latestProPurchaseAt: _purchases.proLatestPurchaseAtFor(uid),
+        );
+        if (!_purchases.isPro || status.userType == 'pro user') return;
+      } catch (_) {
+        // A network or webhook delay is retried only for this purchase action.
+      }
     }
   }
 
@@ -174,9 +211,22 @@ class ProAccess extends ChangeNotifier {
       _couponExpiryTimer = Timer(expiresAt.difference(DateTime.now()), () {
         _couponExpiresAt = null;
         _emit();
+        final uid = _currentUid();
+        if (uid != null) unawaited(_syncUserInfoSilently(uid));
       });
     }
     _emit();
+  }
+
+  Future<void> _syncUserInfoSilently(String uid) async {
+    try {
+      await _entitlements?.syncUserInfo(
+        uid,
+        latestProPurchaseAt: _purchases.proLatestPurchaseAtFor(uid),
+      );
+    } catch (_) {
+      // The next app launch retries when the network is available.
+    }
   }
 
   // ------------------------------------------------------------- wiring
@@ -186,6 +236,7 @@ class ProAccess extends ChangeNotifier {
     if (id != _householdId) {
       _householdId = id;
       _proSubscription?.cancel();
+      _householdExpiryTimer?.cancel();
       _proSubscription = null;
       _householdPro = HouseholdPro.none;
       final service = _entitlements;
@@ -195,6 +246,7 @@ class ProAccess extends ChangeNotifier {
             .listen(
               (value) {
                 _householdPro = value;
+                _scheduleHouseholdExpiry();
                 _emit();
               },
               onError: (_) {
@@ -206,6 +258,21 @@ class ProAccess extends ChangeNotifier {
     }
     _syncUsage();
     _emit();
+  }
+
+  void _scheduleHouseholdExpiry() {
+    _householdExpiryTimer?.cancel();
+    final now = DateTime.now();
+    final expiries = [
+      _householdPro.expiresAt,
+      _householdPro.multiPetExpiresAt,
+      _householdPro.aiExpiresAt,
+    ].whereType<DateTime>().where((date) => date.isAfter(now)).toList()..sort();
+    if (expiries.isEmpty) return;
+    _householdExpiryTimer = Timer(expiries.first.difference(now), () {
+      _emit();
+      _scheduleHouseholdExpiry();
+    });
   }
 
   void _syncUsage() {
@@ -252,6 +319,7 @@ class ProAccess extends ChangeNotifier {
     _proSubscription?.cancel();
     _usageSubscription?.cancel();
     _couponExpiryTimer?.cancel();
+    _householdExpiryTimer?.cancel();
     super.dispose();
   }
 }

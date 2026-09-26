@@ -126,6 +126,7 @@ Katecode/
 # feature-porting only.
 Mingze code/
 functions/node_modules/
+**/.firebase/
 
 # RevenueCat 正式 Key，不要提交
 revenuecat.json

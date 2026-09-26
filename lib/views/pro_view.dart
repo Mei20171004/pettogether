@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -209,6 +211,7 @@ class _ProViewState extends State<ProView> {
       );
       if (!mounted) return;
       if (unlocked) {
+        unawaited(context.read<ProAccess>().syncUserInfoAfterPurchase());
         messenger.showSnackBar(
           SnackBar(
             content: Text(
@@ -249,6 +252,9 @@ class _ProViewState extends State<ProView> {
       final restored = await purchases.restore(
         entitlementId: widget.feature.entitlementId,
       );
+      if (restored && mounted) {
+        unawaited(context.read<ProAccess>().syncUserInfoAfterPurchase());
+      }
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(

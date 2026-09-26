@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#fff9f3">
+    <meta name="referrer" content="no-referrer">
+    <title>健康历史报告 · pettogether</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/historyreport.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="brand">
+        <img src="/app_icon.png" alt="" width="34" height="34">
+        <span>pettogether</span>
+      </div>
+      <span class="pro-mark">PRO</span>
+    </header>
+
+    <main class="report-shell">
+      <div class="report-heading">
+        <p class="eyebrow" data-i18n="eyebrow">健康档案 · HISTORY</p>
+        <h1 data-i18n="title">健康历史报告</h1>
+        <p class="intro" data-i18n="intro">就诊与用药记录，按宠物整理在一起。</p>
+      </div>
+
+      <section class="state-panel" id="state-panel" role="status" aria-live="polite">
+        <div class="state-indicator" aria-hidden="true"></div>
+        <div>
+          <h2 id="state-title" data-i18n="connecting">正在连接 App</h2>
+          <p id="state-detail" data-i18n="connectingDetail">请稍候，正在确认你的登录身份。</p>
+          <button id="retry-button" type="button" hidden data-i18n="retry">重试</button>
+        </div>
+      </section>
+
+      <div id="report" hidden>
+        <div class="report-toolbar">
+          <div>
+            <p class="section-kicker" data-i18n="currentPet">当前宠物</p>
+            <select id="pet-select" aria-label="选择宠物"></select>
+          </div>
+          <span id="account-label" class="account-label"></span>
+        </div>
+
+        <div class="summary" aria-label="报告摘要">
+          <div><strong id="record-count">0</strong><span data-i18n="recordCount">健康记录</span></div>
+          <div><strong id="medication-count">0</strong><span data-i18n="medicationCount">用药疗程</span></div>
+        </div>
+
+        <section class="report-section" aria-labelledby="records-title">
+          <div class="section-heading">
+            <h2 id="records-title" data-i18n="healthHistory">健康历史</h2>
+            <span data-i18n="newestFirst">最近记录在前</span>
+          </div>
+          <div id="records-list" class="record-list"></div>
+        </section>
+
+        <section class="report-section" aria-labelledby="medications-title">
+          <div class="section-heading">
+            <h2 id="medications-title" data-i18n="medications">用药疗程</h2>
+            <span data-i18n="recordedInApp">来自 App 的记录</span>
+          </div>
+          <div id="medications-list" class="medication-list"></div>
+        </section>
+      </div>
+    </main>
+    <footer>pettogether <span aria-hidden="true">·</span> <span data-i18n="footer">资料来自你的家庭记录</span></footer>
+  </body>
+</html>
