@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../config/app_config.dart';
 import '../l10n/l10n.dart';
 import '../store/purchase_store.dart';
+import '../store/pro_access.dart';
 import '../theme/app_theme.dart';
 import 'widgets/common.dart';
 
@@ -136,6 +138,45 @@ Future<void> showProPaywall(
 
 class _ProViewState extends State<ProView> {
   Package? _selected;
+  final TextEditingController _couponController = TextEditingController();
+  bool _redeemingCoupon = false;
+
+  @override
+  void dispose() {
+    _couponController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _redeemCoupon() async {
+    final code = _couponController.text.trim();
+    if (code.isEmpty || _redeemingCoupon) return;
+    setState(() => _redeemingCoupon = true);
+    final active = await context.read<ProAccess>().redeemFreeCoupon(code);
+    if (!mounted) return;
+    setState(() => _redeemingCoupon = false);
+    final language = context.read<AppLanguageStore>().language;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          active
+              ? L10n.text(
+                  language,
+                  'Free coupon activated. All features are unlocked until the deadline.',
+                  '無料クーポンを適用しました。期限まで全機能を利用できます。',
+                  '免费优惠码已激活，截止前可使用全部功能。',
+                  '무료 쿠폰이 활성화되었습니다. 기한까지 모든 기능을 사용할 수 있습니다.',
+                )
+              : L10n.text(
+                  language,
+                  'Invalid or expired coupon, or unable to connect. Please try again.',
+                  'クーポンが無効・期限切れ、または接続できません。再試行してください。',
+                  '优惠码无效、已过期或暂时无法连接，请重试。',
+                  '쿠폰이 유효하지 않거나 만료되었거나 연결할 수 없습니다. 다시 시도하세요.',
+                ),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -252,13 +293,12 @@ class _ProViewState extends State<ProView> {
   Widget build(BuildContext context) {
     final language = context.watch<AppLanguageStore>().language;
     final purchases = context.watch<PurchaseStore>();
+    final access = context.watch<ProAccess>();
     final packages = purchases.packages.where(widget.feature.matches).toList();
     final selected = _selectedOrDefault(packages);
     return Scaffold(
       backgroundColor: PawColors.cream,
-      appBar: AppBar(
-        title: Text(widget.feature.title(language)),
-      ),
+      appBar: AppBar(title: Text(widget.feature.title(language))),
       body: Stack(
         children: [
           const PetScreenBackground(),
@@ -267,6 +307,8 @@ class _ProViewState extends State<ProView> {
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
               children: [
                 _heroCard(context, language, purchases, selected),
+                const SizedBox(height: 16),
+                _couponCard(language, access),
                 const SizedBox(height: 22),
                 PetSectionTitle(
                   title: L10n.text(
@@ -306,7 +348,8 @@ class _ProViewState extends State<ProView> {
                   ),
                 ],
                 const SizedBox(height: 22),
-                if (!widget.feature.isUnlocked(purchases))
+                if (!access.isFreeCouponActive &&
+                    !widget.feature.isUnlocked(purchases))
                   ..._plans(language, purchases, packages, selected),
                 const SizedBox(height: 16),
                 if (purchases.isAvailable)
@@ -326,6 +369,91 @@ class _ProViewState extends State<ProView> {
                   ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _couponCard(AppLanguage language, ProAccess access) {
+    final expiresAt = access.freeCouponExpiresAt;
+    if (expiresAt != null) {
+      final japanTime = expiresAt.toUtc().add(const Duration(hours: 9));
+      return PetCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              L10n.text(
+                language,
+                'Free coupon active',
+                '無料クーポン適用中',
+                '免费优惠码使用中',
+                '무료 쿠폰 사용 중',
+              ),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${L10n.text(language, 'All features free until', '全機能の無料期限', '全部功能免费至', '모든 기능 무료 종료 시각')} '
+              '${DateFormat('yyyy/MM/dd HH:mm').format(japanTime)} JST',
+            ),
+          ],
+        ),
+      );
+    }
+    return PetCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            L10n.text(
+              language,
+              'Have a Free coupon?',
+              '無料クーポンをお持ちですか？',
+              '有 Free coupon 吗？',
+              '무료 쿠폰이 있나요?',
+            ),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _couponController,
+            enabled: !_redeemingCoupon,
+            textInputAction: TextInputAction.done,
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _redeemCoupon(),
+            decoration: InputDecoration(
+              labelText: 'Free coupon',
+              hintText: L10n.text(
+                language,
+                'Enter your code',
+                'コードを入力',
+                '输入优惠码',
+                '코드를 입력하세요',
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton(
+            onPressed: _redeemingCoupon || _couponController.text.trim().isEmpty
+                ? null
+                : _redeemCoupon,
+            child: _redeemingCoupon
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(
+                    L10n.text(
+                      language,
+                      'Apply coupon',
+                      'クーポンを適用',
+                      '使用优惠码',
+                      '쿠폰 적용',
+                    ),
+                  ),
           ),
         ],
       ),
@@ -474,7 +602,8 @@ class _ProViewState extends State<ProView> {
     PurchaseStore purchases,
     Package? selected,
   ) {
-    final isUnlocked = widget.feature.isUnlocked(purchases);
+    final couponActive = context.watch<ProAccess>().isFreeCouponActive;
+    final isUnlocked = couponActive || widget.feature.isUnlocked(purchases);
     final canBuy =
         purchases.isAvailable && selected != null && !purchases.isPurchasing;
     return Container(
@@ -522,7 +651,15 @@ class _ProViewState extends State<ProView> {
             const SizedBox(height: 12),
           ],
           Text(
-            isUnlocked
+            couponActive
+                ? L10n.text(
+                    language,
+                    'All features unlocked with Free coupon',
+                    '無料クーポンですべての機能を利用できます',
+                    'Free coupon 已解锁全部功能',
+                    '무료 쿠폰으로 모든 기능을 사용할 수 있습니다',
+                  )
+                : isUnlocked
                 ? L10n.text(
                     language,
                     '${widget.feature.title(language)} is active. Thank you!',

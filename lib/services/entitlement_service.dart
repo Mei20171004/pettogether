@@ -76,6 +76,39 @@ class EntitlementService {
   DocumentReference<Map<String, dynamic>> _usageDoc(String uid) =>
       _db.collection('aiUsage').doc(uid);
 
+  DocumentReference<Map<String, dynamic>> _couponDoc() =>
+      _db.collection('aiUsage').doc('freecoupon');
+
+  DocumentReference<Map<String, dynamic>> _redemptionDoc(String uid) =>
+      _db.collection('freeCouponRedemptions').doc(uid);
+
+  /// A server read on launch prevents an old offline cache from granting paid
+  /// features after the coupon has expired or been revoked.
+  Future<DateTime?> checkFreeCoupon(String uid) async {
+    final redemption = await _redemptionDoc(uid)
+        .get(const GetOptions(source: Source.server));
+    final redeemedCode = redemption.data()?['coupon'];
+    if (redeemedCode is! String) return null;
+
+    final definition = await _couponDoc().get(
+      const GetOptions(source: Source.server),
+    );
+    final data = definition.data();
+    final enddate = data?['enddate'];
+    if (data?['coupon'] != redeemedCode || enddate is! Timestamp) return null;
+    final expiresAt = enddate.toDate();
+    return expiresAt.isAfter(DateTime.now()) ? expiresAt : null;
+  }
+
+  /// Firestore Rules compare the submitted code and deadline on the server.
+  /// No client can write a redemption merely by changing local application state.
+  Future<DateTime?> redeemFreeCoupon(String uid, String code) async {
+    await _redemptionDoc(
+      uid,
+    ).set({'coupon': code.trim(), 'redeemedAt': FieldValue.serverTimestamp()});
+    return checkFreeCoupon(uid);
+  }
+
   /// Errors (offline, permission denied) are surfaced to the listener, which
   /// falls back to "not unlocked" rather than guessing.
   Stream<HouseholdPro> watchHouseholdPro(String householdId) =>

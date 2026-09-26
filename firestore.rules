@@ -29,6 +29,31 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/households/$(householdId)/members/$(request.auth.uid)).data.role == 'owner';
     }
 
+    // A redeemed coupon belongs to the signed-in user. The coupon definition
+    // remains unreadable until that user has redeemed it successfully.
+    function freeCouponActive() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/aiUsage/freecoupon)
+        && exists(/databases/$(database)/documents/freeCouponRedemptions/$(request.auth.uid))
+        && get(/databases/$(database)/documents/aiUsage/freecoupon).data.enddate is timestamp
+        && get(/databases/$(database)/documents/aiUsage/freecoupon).data.enddate > request.time
+        && get(/databases/$(database)/documents/freeCouponRedemptions/$(request.auth.uid)).data.coupon
+          == get(/databases/$(database)/documents/aiUsage/freecoupon).data.coupon;
+    }
+
+    function validFreeCouponRedemption(data, uid) {
+      return signedIn()
+        && uid == request.auth.uid
+        && data.keys().hasOnly(['coupon', 'redeemedAt'])
+        && data.keys().hasAll(['coupon', 'redeemedAt'])
+        && data.coupon is string
+        && data.redeemedAt == request.time
+        && exists(/databases/$(database)/documents/aiUsage/freecoupon)
+        && get(/databases/$(database)/documents/aiUsage/freecoupon).data.enddate is timestamp
+        && get(/databases/$(database)/documents/aiUsage/freecoupon).data.enddate > request.time
+        && data.coupon == get(/databases/$(database)/documents/aiUsage/freecoupon).data.coupon;
+    }
+
     // Pro state for a household, mirrored from RevenueCat by
     // exports.revenuecatWebhook (functions/index.js). The doc is written by
     // the Admin SDK only; clients can read it but never write it.
@@ -38,14 +63,14 @@ service cloud.firestore {
     // household with no pro doc at all is simply not Pro — exists() is checked
     // first so the missing doc reads false instead of failing the rule.
     function proActive(householdId) {
-      return exists(/databases/$(database)/documents/households/$(householdId)/private/pro)
+      return freeCouponActive() || (exists(/databases/$(database)/documents/households/$(householdId)/private/pro)
         && (get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('active', false) == true
-            || get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('legacy', false) == true);
+            || get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('legacy', false) == true));
     }
 
     function multiPetActive(householdId) {
-      return exists(/databases/$(database)/documents/households/$(householdId)/private/pro)
-        && get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('multiPetActive', false) == true;
+      return freeCouponActive() || (exists(/databases/$(database)/documents/households/$(householdId)/private/pro)
+        && get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('multiPetActive', false) == true);
     }
 
     function validHousehold(data) {
@@ -168,18 +193,33 @@ service cloud.firestore {
     // one, so the free allowance cannot be reset mid-month by rewriting the
     // document.
     // ---------------------------------------------------------------------
-    match /aiUsage/{uid} {
+    match /aiUsage/freecoupon {
+      allow get: if signedIn()
+        && exists(/databases/$(database)/documents/freeCouponRedemptions/$(request.auth.uid))
+        && resource.data.coupon == get(/databases/$(database)/documents/freeCouponRedemptions/$(request.auth.uid)).data.coupon;
+      allow list, write: if false;
+    }
+
+    match /freeCouponRedemptions/{uid} {
       allow get: if signedIn() && uid == request.auth.uid;
+      allow list, delete: if false;
+      allow create, update: if validFreeCouponRedemption(request.resource.data, uid);
+    }
+
+    match /aiUsage/{uid} {
+      allow get: if signedIn() && uid == request.auth.uid && uid != 'freecoupon';
       allow list: if false;
 
       allow create: if signedIn()
         && uid == request.auth.uid
+        && uid != 'freecoupon'
         && request.resource.data.count == 1
         && request.resource.data.month is string
         && request.resource.data.month.matches('^[0-9]{4}-[0-9]{2}$');
 
       allow update: if signedIn()
         && uid == request.auth.uid
+        && uid != 'freecoupon'
         && request.resource.data.month is string
         && request.resource.data.month.matches('^[0-9]{4}-[0-9]{2}$')
         && ((request.resource.data.month == resource.data.month

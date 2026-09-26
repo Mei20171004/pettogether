@@ -43,6 +43,8 @@ class ProAccess extends ChangeNotifier {
 
   HouseholdPro _householdPro = HouseholdPro.none;
   AiUsage _usage = AiUsage.empty;
+  DateTime? _couponExpiresAt;
+  Timer? _couponExpiryTimer;
   String? _householdId;
   String? _uid;
   StreamSubscription<HouseholdPro>? _proSubscription;
@@ -61,7 +63,14 @@ class ProAccess extends ChangeNotifier {
   // ------------------------------------------------------------------ getters
 
   /// True when any Pro feature should be available.
-  bool get isPro => _purchases.isPro || _householdPro.unlocked;
+  bool get isFreeCouponActive =>
+      _couponExpiresAt?.isAfter(DateTime.now()) ?? false;
+
+  DateTime? get freeCouponExpiresAt =>
+      isFreeCouponActive ? _couponExpiresAt : null;
+
+  bool get isPro =>
+      isFreeCouponActive || _purchases.isPro || _householdPro.unlocked;
 
   /// True when access comes from the pre-launch grandfather flag rather than a
   /// live subscription. Useful for copy: these users are not "subscribers".
@@ -72,9 +81,12 @@ class ProAccess extends ChangeNotifier {
   bool get isSharedFromHousehold => !_purchases.isPro && _householdPro.active;
 
   bool get hasMultiPet =>
-      _purchases.hasMultiPet || _householdPro.multiPetActive;
+      isFreeCouponActive ||
+      _purchases.hasMultiPet ||
+      _householdPro.multiPetActive;
 
-  bool get hasAi => _purchases.hasAi || _householdPro.aiActive;
+  bool get hasAi =>
+      isFreeCouponActive || _purchases.hasAi || _householdPro.aiActive;
 
   int get aiParseLimit =>
       hasAi ? ProLimits.proAiParsesPerMonth : ProLimits.freeAiParsesPerMonth;
@@ -121,6 +133,52 @@ class ProAccess extends ChangeNotifier {
     }
   }
 
+  /// Rechecks the server on app launch, sign-in, and resume. A failed check
+  /// clears coupon access rather than trusting a cached grant.
+  Future<void> refreshFreeCoupon() async {
+    _syncUsage();
+    final uid = _uid;
+    final service = _entitlements;
+    if (uid == null || service == null) {
+      _setCouponExpiry(null);
+      return;
+    }
+    try {
+      final expiresAt = await service.checkFreeCoupon(uid);
+      if (_uid == uid) _setCouponExpiry(expiresAt);
+    } catch (_) {
+      if (_uid == uid) _setCouponExpiry(null);
+    }
+  }
+
+  /// Returns false when Firestore rejects a wrong or expired code.
+  Future<bool> redeemFreeCoupon(String code) async {
+    _syncUsage();
+    final uid = _uid;
+    final service = _entitlements;
+    if (uid == null || service == null || code.trim().isEmpty) return false;
+    try {
+      final expiresAt = await service.redeemFreeCoupon(uid, code);
+      if (_uid != uid) return false;
+      _setCouponExpiry(expiresAt);
+      return expiresAt != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _setCouponExpiry(DateTime? expiresAt) {
+    _couponExpiryTimer?.cancel();
+    _couponExpiresAt = expiresAt;
+    if (expiresAt != null && expiresAt.isAfter(DateTime.now())) {
+      _couponExpiryTimer = Timer(expiresAt.difference(DateTime.now()), () {
+        _couponExpiresAt = null;
+        _emit();
+      });
+    }
+    _emit();
+  }
+
   // ------------------------------------------------------------- wiring
 
   void _syncHousehold() {
@@ -154,6 +212,7 @@ class ProAccess extends ChangeNotifier {
     final uid = _currentUid();
     if (uid == _uid) return;
     _uid = uid;
+    _setCouponExpiry(null);
     _usageSubscription?.cancel();
     _usageSubscription = null;
     _usage = AiUsage.empty;
@@ -171,6 +230,7 @@ class ProAccess extends ChangeNotifier {
               _emit();
             },
           );
+      unawaited(refreshFreeCoupon());
     }
   }
 
@@ -178,7 +238,7 @@ class ProAccess extends ChangeNotifier {
   /// [CareStore] cannot turn into a rebuild loop.
   void _emit() {
     final signature =
-        '$isPro|$hasMultiPet|$hasAi|$aiParsesUsed|$aiParseLimit|'
+        '$isFreeCouponActive|$isPro|$hasMultiPet|$hasAi|$aiParsesUsed|$aiParseLimit|'
         '$activeMedicationCourses|${_care.household?.pets.length}';
     if (signature == _lastSignature) return;
     _lastSignature = signature;
@@ -191,6 +251,7 @@ class ProAccess extends ChangeNotifier {
     _care.removeListener(_syncHousehold);
     _proSubscription?.cancel();
     _usageSubscription?.cancel();
+    _couponExpiryTimer?.cancel();
     super.dispose();
   }
 }

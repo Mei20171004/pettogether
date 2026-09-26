@@ -38,7 +38,8 @@ class PetTogetherApp extends StatefulWidget {
   State<PetTogetherApp> createState() => _PetTogetherAppState();
 }
 
-class _PetTogetherAppState extends State<PetTogetherApp> {
+class _PetTogetherAppState extends State<PetTogetherApp>
+    with WidgetsBindingObserver {
   late final CareStore _store;
   late final PurchaseStore _purchases =
       widget.purchases ?? PurchaseStore(apiKey: '');
@@ -71,16 +72,27 @@ class _PetTogetherAppState extends State<PetTogetherApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _store = CareStore(
       widget.service,
       notificationService: widget.notifications,
     );
     if (AppConfig.useFirebase && Firebase.apps.isNotEmpty) {
-      _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      _authSubscription = FirebaseAuth.instance.authStateChanges().listen((
+        user,
+      ) {
+        unawaited(_proAccess.refreshFreeCoupon());
         if (user != null) unawaited(_flushPendingInvitationLink());
       });
     }
     _initializeAppLinks();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_proAccess.refreshFreeCoupon());
+    }
   }
 
   Future<void> _initializeAppLinks() async {
@@ -139,6 +151,7 @@ class _PetTogetherAppState extends State<PetTogetherApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _appLinkSubscription?.cancel();
     _authSubscription?.cancel();
     _store.dispose();

@@ -9,15 +9,25 @@ service firebase.storage {
         && firestore.exists(/databases/(default)/documents/households/$(householdId)/members/$(request.auth.uid));
     }
 
+    function freeCouponActive() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/aiUsage/freecoupon)
+        && firestore.exists(/databases/(default)/documents/freeCouponRedemptions/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/aiUsage/freecoupon).data.enddate is timestamp
+        && firestore.get(/databases/(default)/documents/aiUsage/freecoupon).data.enddate > request.time
+        && firestore.get(/databases/(default)/documents/freeCouponRedemptions/$(request.auth.uid)).data.coupon
+          == firestore.get(/databases/(default)/documents/aiUsage/freecoupon).data.coupon;
+    }
+
     // 该家庭是否拥有 Pro（跨服务读取 Firestore 的家庭订阅镜像文档，
     // 由 exports.revenuecatWebhook 写入；legacy 为付费墙上线前的老家庭）。
     // 先用 exists() 判断，文档缺失时按“未订阅”处理而不是报错。
     function proActive(householdId) {
-      return firestore.exists(/databases/(default)/documents/households/$(householdId)/private/pro)
+      return freeCouponActive() || (firestore.exists(/databases/(default)/documents/households/$(householdId)/private/pro)
         && ((('active' in firestore.get(/databases/(default)/documents/households/$(householdId)/private/pro).data)
              && firestore.get(/databases/(default)/documents/households/$(householdId)/private/pro).data.active == true)
             || (('legacy' in firestore.get(/databases/(default)/documents/households/$(householdId)/private/pro).data)
-                && firestore.get(/databases/(default)/documents/households/$(householdId)/private/pro).data.legacy == true));
+                && firestore.get(/databases/(default)/documents/households/$(householdId)/private/pro).data.legacy == true)));
     }
 
     // 宠物照片路径：households/{家庭ID}/pets/{宠物ID}.jpg

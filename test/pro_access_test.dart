@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pettogether/config/app_config.dart';
 import 'package:pettogether/models/models.dart';
 import 'package:pettogether/services/mock_care_service.dart';
+import 'package:pettogether/services/entitlement_service.dart';
 import 'package:pettogether/store/care_store.dart';
 import 'package:pettogether/store/pro_access.dart';
 import 'package:pettogether/store/purchase_store.dart';
@@ -22,6 +23,29 @@ class _EntitlementPurchaseStore extends PurchaseStore {
 
   @override
   bool get hasAi => entitlements.contains(AppConfig.aiEntitlementId);
+}
+
+class _CouponEntitlementService extends Fake implements EntitlementService {
+  DateTime? expiresAt;
+  bool redeemed = false;
+
+  @override
+  Stream<HouseholdPro> watchHouseholdPro(String householdId) =>
+      Stream.value(HouseholdPro.none);
+
+  @override
+  Stream<AiUsage> watchAiUsage(String uid) => Stream.value(AiUsage.empty);
+
+  @override
+  Future<DateTime?> checkFreeCoupon(String uid) async =>
+      redeemed ? expiresAt : null;
+
+  @override
+  Future<DateTime?> redeemFreeCoupon(String uid, String code) async {
+    if (code != 'petlove2026') return null;
+    redeemed = true;
+    return expiresAt;
+  }
 }
 
 /// A ProAccess with no RevenueCat key and no Firestore behind it, which is the
@@ -172,6 +196,45 @@ void main() {
       expect(result.access.canAddPet, isFalse);
       expect(result.access.canUseAi, isFalse);
     });
+  });
+
+  test('coupon unlocks every paid gate and expires automatically', () async {
+    SharedPreferences.setMockInitialValues({});
+    final care = CareStore(MockCareService());
+    await care.createHousehold(
+      name: 'Mochi Family',
+      pets: [const Pet(id: 'pet-1', name: 'Mochi')],
+      caregiverName: 'Sam',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    final service = _CouponEntitlementService()
+      ..expiresAt = DateTime.now().add(const Duration(milliseconds: 350));
+    final access = ProAccess(
+      purchases: PurchaseStore(apiKey: ''),
+      care: care,
+      entitlements: service,
+      currentUid: () => 'user-1',
+    );
+    addTearDown(() {
+      access.dispose();
+      care.dispose();
+    });
+
+    expect(await access.redeemFreeCoupon('wrong'), isFalse);
+    expect(access.isFreeCouponActive, isFalse);
+    expect(await access.redeemFreeCoupon('petlove2026'), isTrue);
+    expect(access.isPro, isTrue);
+    expect(access.canAddPet, isTrue);
+    expect(access.canAttachPhotos, isTrue);
+    expect(access.canExportVetPack, isTrue);
+    expect(access.canStartMedicationCourse, isTrue);
+    expect(access.canUseAi, isTrue);
+
+    await Future<void>.delayed(const Duration(milliseconds: 420));
+    expect(access.isFreeCouponActive, isFalse);
+    expect(access.canAddPet, isFalse);
+    expect(access.canAttachPhotos, isFalse);
+    expect(access.canUseAi, isFalse);
   });
 
   group('AppConfig.resolveRevenueCatKey', () {
