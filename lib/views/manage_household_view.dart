@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -230,21 +231,41 @@ class ManageHouseholdView extends StatelessWidget {
                               '招待を共有', '分享邀请', '초대 공유'),
                           onPressed: () async {
                             final box = context.findRenderObject() as RenderBox?;
-                            await SharePlus.instance.share(
-                              ShareParams(
-                                text: invitation.deepLink,
-                                subject: L10n.text(
-                                  language,
-                                  'Join my pettogether household',
-                                  'pettogether の家族に参加',
-                                  '加入我的 pettogether 家庭',
-                                  '내 pettogether 가족에 참여하세요',
-                                ),
-                                sharePositionOrigin: box == null
-                                    ? null
-                                    : box.localToGlobal(Offset.zero) & box.size,
-                              ),
+                            final title = L10n.text(
+                              language,
+                              'Join my pettogether household',
+                              'pettogether の家族に参加',
+                              '加入我的 pettogether 家庭',
+                              '내 pettogether 가족에 참여하세요',
                             );
+                            if (!kIsWeb &&
+                                defaultTargetPlatform == TargetPlatform.iOS) {
+                              try {
+                                final logo = await rootBundle.load(
+                                  'assets/images/app_icon.png',
+                                );
+                                await const MethodChannel(
+                                  'pettogether/invitation_share',
+                                ).invokeMethod<void>('share', {
+                                  'link': invitation.deepLink,
+                                  'title': title,
+                                  'logo': logo.buffer.asUint8List(
+                                    logo.offsetInBytes,
+                                    logo.lengthInBytes,
+                                  ),
+                                });
+                                return;
+                              } catch (error) {
+                                debugPrint('iOS invitation preview failed: $error');
+                              }
+                            }
+                            await SharePlus.instance.share(ShareParams(
+                              text: invitation.deepLink,
+                              subject: title,
+                              sharePositionOrigin: box == null
+                                  ? null
+                                  : box.localToGlobal(Offset.zero) & box.size,
+                            ));
                           },
                           icon: const Icon(Icons.ios_share_rounded),
                         ),

@@ -8,6 +8,8 @@ import 'package:pettogether/l10n/l10n.dart';
 import 'package:pettogether/models/models.dart';
 import 'package:pettogether/services/mock_care_service.dart';
 import 'package:pettogether/store/care_store.dart';
+import 'package:pettogether/store/pro_access.dart';
+import 'package:pettogether/store/purchase_store.dart';
 import 'package:pettogether/views/health/health_view.dart';
 import 'package:pettogether/views/widgets/task_card.dart';
 
@@ -35,6 +37,16 @@ void main() {
         ChangeNotifierProvider<CareStore>.value(value: store),
         ChangeNotifierProvider<AppLanguageStore>(
           create: (_) => AppLanguageStore(AppLanguage.chinese),
+        ),
+        ChangeNotifierProvider<PurchaseStore>(
+          create: (_) => PurchaseStore(apiKey: ''),
+        ),
+        ChangeNotifierProvider<ProAccess>(
+          create: (context) => ProAccess(
+            purchases: context.read<PurchaseStore>(),
+            care: store,
+            currentUid: () => null,
+          ),
         ),
       ],
       child: MaterialApp(home: home),

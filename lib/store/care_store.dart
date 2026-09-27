@@ -62,6 +62,7 @@ class CareStore extends ChangeNotifier {
   int _sessionRequestGeneration = 0;
   bool _didAttemptSessionRestore = false;
   Future<void>? _sessionRestoreFuture;
+  String? _authenticatedUserId;
 
   // -------------------------------------------------------------------------
   // Getters
@@ -405,21 +406,58 @@ class CareStore extends ChangeNotifier {
   // Session
   // -------------------------------------------------------------------------
 
+  /// In-memory household data belongs to one Firebase user, not the device.
+  /// Keep the saved household id: FirebaseCareService validates it against the
+  /// new user's membership before using it.
+  void setAuthenticatedUser(String? userId) {
+    if (_authenticatedUserId == userId) return;
+    _authenticatedUserId = userId;
+    _sessionRequestGeneration++;
+    _cancelSubscriptions();
+    _household = null;
+    _currentCaregiver = null;
+    _tasks = [];
+    _caregivers = [];
+    _routines = [];
+    _medicationPlans = [];
+    _healthRecords = [];
+    _invitationPreview = null;
+    _activeInvitation = null;
+    _pendingJoinRequest = null;
+    _joinRequests = [];
+    _notificationsEnabled = false;
+    _notificationPermission = NotificationPermissionState.unavailable;
+    _completingApprovedJoin = false;
+    _isLoading = false;
+    _isSavingTask = false;
+    _isSavingProfile = false;
+    _isSavingHealth = false;
+    _mutatingTaskIDs = {};
+    _errorMessage = null;
+    _didAttemptSessionRestore = false;
+    _sessionRestoreFuture = null;
+    _isRestoringSession = userId != null;
+    notifyListeners();
+  }
+
   Future<void> restoreSession() =>
       _sessionRestoreFuture ??= _restoreSessionOnce();
 
   Future<void> _restoreSessionOnce() async {
     if (_didAttemptSessionRestore) return;
     _didAttemptSessionRestore = true;
+    final generation = _sessionRequestGeneration;
     await _restoreSessionIfAvailable();
+    if (generation != _sessionRequestGeneration) return;
     // No household (yet): the user may have a pending join request waiting
     // for owner approval.
     if (_household == null && _pendingJoinRequest == null) {
       try {
         final request = await _service.restorePendingJoinRequest();
+        if (generation != _sessionRequestGeneration) return;
         if (request != null) _watchPendingRequest(request);
       } catch (error) {
-        _setError(error);
+        if (generation == _sessionRequestGeneration) _setError(error);
       }
     }
   }
@@ -1592,71 +1630,87 @@ class CareStore extends ChangeNotifier {
       if (generation != _sessionRequestGeneration) return;
       _errorMessage = _describe(error);
     } finally {
-      _isRestoringSession = false;
-      notifyListeners();
+      if (generation == _sessionRequestGeneration) {
+        _isRestoringSession = false;
+        notifyListeners();
+      }
     }
   }
 
   void _observeDomain(CareSession session) {
+    final generation = _sessionRequestGeneration;
+    void onErrorIfCurrent(Object error) {
+      if (generation == _sessionRequestGeneration) _setError(error);
+    }
+
     _service.stopObserving();
     _service.observeHousehold(
       householdID: session.household.id,
       onChange: (household) {
+        if (generation != _sessionRequestGeneration) return;
         _household = household;
         notifyListeners();
       },
-      onError: (error) => _setError(error),
+      onError: onErrorIfCurrent,
     );
     _service.observeTasks(
       householdID: session.household.id,
       onChange: (tasks) {
+        if (generation != _sessionRequestGeneration) return;
         _tasks = tasks;
         notifyListeners();
       },
-      onError: (error) => _setError(error),
+      onError: onErrorIfCurrent,
     );
     _service.observeCaregivers(
       householdID: session.household.id,
       onChange: (caregivers) {
+        if (generation != _sessionRequestGeneration) return;
         _caregivers = caregivers;
         final currentID = _currentCaregiver?.id;
         if (currentID != null) {
-          final updated = caregivers.where((c) => c.id == currentID).firstOrNull;
+          final updated = caregivers
+              .where((c) => c.id == currentID)
+              .firstOrNull;
           if (updated != null) _currentCaregiver = updated;
         }
         notifyListeners();
       },
-      onError: (error) => _setError(error),
+      onError: onErrorIfCurrent,
     );
     _service.observeRoutines(
       householdID: session.household.id,
       onChange: (routines) {
+        if (generation != _sessionRequestGeneration) return;
         _routines = routines;
         notifyListeners();
       },
-      onError: (error) => _setError(error),
+      onError: onErrorIfCurrent,
     );
     _service.observeMedicationPlans(
       householdID: session.household.id,
       onChange: (plans) {
+        if (generation != _sessionRequestGeneration) return;
         _medicationPlans = plans;
         notifyListeners();
       },
-      onError: (error) => _setError(error),
+      onError: onErrorIfCurrent,
     );
     _service.observeHealthRecords(
       householdID: session.household.id,
       onChange: (records) {
+        if (generation != _sessionRequestGeneration) return;
         _healthRecords = records;
         notifyListeners();
       },
-      onError: (error) => _setError(error),
+      onError: onErrorIfCurrent,
     );
 
     _joinRequestsSubscription?.cancel();
     _joinRequestsSubscription = _service
         .joinRequestsStream(session.household.id)
         .listen((next) {
+          if (generation != _sessionRequestGeneration) return;
           _joinRequests = next;
           final invitation = _activeInvitation;
           if (invitation != null &&
@@ -1664,41 +1718,53 @@ class CareStore extends ChangeNotifier {
             _activeInvitation = null;
           }
           notifyListeners();
-        }, onError: (error) => _setError(error));
+        }, onError: onErrorIfCurrent);
 
     unawaited(_loadActiveInvitation(session.household.id));
     unawaited(_syncNotificationsForSession());
   }
 
   Future<void> _loadActiveInvitation(String householdID) async {
+    final generation = _sessionRequestGeneration;
     try {
       final invitation = await _service.getActiveInvitation(householdID);
-      if (_household?.id != householdID) return;
+      if (generation != _sessionRequestGeneration ||
+          _household?.id != householdID) {
+        return;
+      }
       _activeInvitation = invitation;
       notifyListeners();
     } catch (error) {
-      _setError(error);
+      if (generation == _sessionRequestGeneration) _setError(error);
     }
   }
 
   void _watchPendingRequest(HouseholdJoinRequest request) {
+    final generation = _sessionRequestGeneration;
     _pendingJoinSubscription?.cancel();
     _pendingJoinRequest = request;
     _invitationPreview = null;
-    _pendingJoinSubscription = _service.joinRequestStream(request).listen((
-      next,
-    ) {
-      _pendingJoinRequest = next;
-      notifyListeners();
-      if (next?.status == JoinRequestStatus.approved) {
-        unawaited(_completeApprovedJoin());
-      }
-    }, onError: (error) => _setError(error));
+    _pendingJoinSubscription = _service
+        .joinRequestStream(request)
+        .listen(
+          (next) {
+            if (generation != _sessionRequestGeneration) return;
+            _pendingJoinRequest = next;
+            notifyListeners();
+            if (next?.status == JoinRequestStatus.approved) {
+              unawaited(_completeApprovedJoin());
+            }
+          },
+          onError: (error) {
+            if (generation == _sessionRequestGeneration) _setError(error);
+          },
+        );
     notifyListeners();
   }
 
   Future<void> _completeApprovedJoin() async {
     if (_completingApprovedJoin) return;
+    final generation = _sessionRequestGeneration;
     _completingApprovedJoin = true;
     try {
       // The owner's approval transaction may not be visible to us the moment
@@ -1707,6 +1773,7 @@ class CareStore extends ChangeNotifier {
       for (var attempt = 0; attempt < 3; attempt++) {
         try {
           final session = await _service.restoreSession();
+          if (generation != _sessionRequestGeneration) return;
           if (session != null && _household == null) {
             _household = session.household;
             _currentCaregiver = session.caregiver;
@@ -1714,6 +1781,7 @@ class CareStore extends ChangeNotifier {
           }
           if (session != null || _household != null) return;
         } catch (error) {
+          if (generation != _sessionRequestGeneration) return;
           if (attempt == 2) {
             _setError(error);
             return;
@@ -1722,11 +1790,14 @@ class CareStore extends ChangeNotifier {
         await Future<void>.delayed(Duration(seconds: 1 + attempt));
       }
     } finally {
-      _completingApprovedJoin = false;
+      if (generation == _sessionRequestGeneration) {
+        _completingApprovedJoin = false;
+      }
     }
   }
 
   Future<void> _syncNotificationsForSession() async {
+    final generation = _sessionRequestGeneration;
     final notifications = _notificationService;
     final household = _household;
     final caregiver = _currentCaregiver;
@@ -1737,16 +1808,20 @@ class CareStore extends ChangeNotifier {
       return;
     }
     try {
-      _notificationPermission = await notifications.currentPermission();
-      _notificationsEnabled =
-          _notificationPermission.isGranted &&
+      final permission = await notifications.currentPermission();
+      if (generation != _sessionRequestGeneration) return;
+      final enabled =
+          permission.isGranted &&
           await notifications.prepareMember(
             householdId: household.id,
             caregiverId: caregiver.id,
           );
+      if (generation != _sessionRequestGeneration) return;
+      _notificationPermission = permission;
+      _notificationsEnabled = enabled;
       notifyListeners();
     } catch (error) {
-      _setError(error);
+      if (generation == _sessionRequestGeneration) _setError(error);
     }
   }
 

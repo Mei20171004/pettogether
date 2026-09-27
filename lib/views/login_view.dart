@@ -104,29 +104,12 @@ class _LoginViewState extends State<LoginView> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Center(
-                      child: Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: PawColors.purple.withValues(alpha: 0.16),
-                              blurRadius: 18,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(24),
-                          child: Image.asset(
-                            'assets/images/app_icon.png',
-                            width: 72,
-                            height: 72,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
+                      child: Image.asset(
+                        'assets/images/app_logo_transparent.png',
+                        width: 88,
+                        height: 88,
+                        fit: BoxFit.contain,
+                        semanticLabel: 'pettogether',
                       ),
                     ),
                     const SizedBox(height: 16),

@@ -83,12 +83,15 @@ class _PetTogetherAppState extends State<PetTogetherApp>
     _observedPro = _purchases.isPro;
     _purchases.addListener(_onPurchaseStateChanged);
     if (AppConfig.useFirebase && Firebase.apps.isNotEmpty) {
+      _store.setAuthenticatedUser(FirebaseAuth.instance.currentUser?.uid);
       _authSubscription = FirebaseAuth.instance.authStateChanges().listen((
         user,
       ) {
+        _store.setAuthenticatedUser(user?.uid);
         unawaited(_proAccess.refreshFreeCoupon());
         if (user != null) {
           _queueUserInfoSync(user.uid);
+          unawaited(_store.restoreSession());
           unawaited(_flushPendingInvitationLink());
         }
       });
