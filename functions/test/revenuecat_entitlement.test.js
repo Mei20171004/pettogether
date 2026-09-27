@@ -22,7 +22,7 @@ function webhookHarness() {
   const modules = {
     "firebase-functions/v2/firestore": { onDocumentCreated: trigger, onDocumentWritten: trigger },
     "firebase-functions/v2/scheduler": { onSchedule: trigger },
-    "firebase-functions/v2/https": { onRequest: trigger },
+    "firebase-functions/v2/https": { onCall: trigger, onRequest: trigger },
     "firebase-functions/params": { defineSecret: () => ({ value: () => "fixture-auth" }) },
     "firebase-functions/logger": { info() {}, warn() {}, error() {} },
     "firebase-admin/app": { initializeApp() {} },
@@ -32,6 +32,8 @@ function webhookHarness() {
       Timestamp: { fromMillis: (millis) => ({ toMillis: () => millis }) },
     },
     "firebase-admin/messaging": { getMessaging() {} },
+    "firebase-admin/auth": { getAuth() {} },
+    "./web_sign_in": { issueWebSignInToken() {} },
     crypto: require("node:crypto"),
   };
   const context = { exports: {}, require: (id) => {

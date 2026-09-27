@@ -5,8 +5,10 @@ import '../l10n/l10n.dart';
 import '../models/care_catalog.dart';
 import '../models/models.dart';
 import '../store/care_store.dart';
+import '../store/pro_access.dart';
 import '../theme/app_theme.dart';
 import 'invitation_scanner_view.dart';
+import 'pro_view.dart';
 import 'widgets/common.dart';
 import 'widgets/pet_species_icon.dart';
 
@@ -53,6 +55,26 @@ class _CreateJoinViewState extends State<CreateJoinView> {
         _pets.every((pet) => pet.name.text.trim().isNotEmpty && pet.type != null);
   }
 
+  Future<void> _addPet(AppLanguage language) async {
+    if (_pets.length >= 20) return;
+    if (_pets.isNotEmpty && !context.read<ProAccess>().hasMultiPet) {
+      await showProPaywall(
+        context,
+        feature: ProFeature.multiPet,
+        reason: L10n.text(
+          language,
+          'Your first pet is free. Unlock more pets to add a second one.',
+          '1匹目は無料です。2匹目を追加するには複数ペットを利用してください。',
+          '第 1 只宠物免费。添加第 2 只前，请先解锁更多宠物。',
+          '첫 반려동물은 무료입니다. 두 번째를 추가하려면 여러 반려동물을 잠금 해제하세요.',
+        ),
+      );
+      if (!mounted || !context.read<ProAccess>().hasMultiPet) return;
+    }
+    if (!mounted || _pets.length >= 20) return;
+    setState(() => _pets.add(_PetEntry(id: 'pet-${_nextPetId++}')));
+  }
+
   Future<void> _submit(CareStore store) async {
     if (_joining) {
       if (store.invitationPreview == null) {
@@ -61,6 +83,10 @@ class _CreateJoinViewState extends State<CreateJoinView> {
         await store.requestToJoin(caregiverName: _caregiverName.text);
       }
     } else {
+      if (_pets.length > 1 && !context.read<ProAccess>().hasMultiPet) {
+        await showProPaywall(context, feature: ProFeature.multiPet);
+        return;
+      }
       await store.createHousehold(
         name: _householdName.text,
         pets: _pets.map((pet) => pet.toPet()).toList(),
@@ -350,9 +376,7 @@ class _CreateJoinViewState extends State<CreateJoinView> {
             TextButton.icon(
               onPressed: _pets.length >= 20
                   ? null
-                  : () => setState(() {
-                        _pets.add(_PetEntry(id: 'pet-${_nextPetId++}'));
-                      }),
+                  : () => _addPet(language),
               icon: const Icon(Icons.add, size: 18),
               label: Text(L10n.text(
                   language, 'Add pet', 'ペットを追加', '添加宠物', '반려동물 추가')),
@@ -684,15 +708,12 @@ class _CreateJoinViewState extends State<CreateJoinView> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
+                    Image.asset(
+                      'assets/images/app_logo_transparent.png',
                       width: 36,
                       height: 36,
-                      decoration: BoxDecoration(
-                        color: PawColors.lavender,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.pets,
-                          size: 18, color: PawColors.purple),
+                      fit: BoxFit.contain,
+                      semanticLabel: 'pettogether',
                     ),
                     const SizedBox(width: 9),
                     Text(

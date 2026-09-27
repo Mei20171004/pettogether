@@ -110,13 +110,6 @@ service cloud.firestore {
             || get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('legacy', false) == true));
     }
 
-    function multiPetActive(householdId) {
-      return freeCouponActive() || (exists(/databases/$(database)/documents/households/$(householdId)/private/pro)
-        && get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('multiPetActive', false) == true
-        && (get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('multiPetExpiresAt', null) == null
-            || get(/databases/$(database)/documents/households/$(householdId)/private/pro).data.get('multiPetExpiresAt', null) > request.time));
-    }
-
     function validHousehold(data) {
       return data.name is string
         && data.name.size() > 0
@@ -183,9 +176,8 @@ service cloud.firestore {
         || proActive(householdId);
     }
 
-    // Medication courses are separate documents, so their per-count limit is
-    // client-side. Pets live in the household document itself, which lets the
-    // update rule below enforce the multi-pet subscription server-side.
+    // Paid feature limits, including the number of pets, are enforced in the
+    // app. These rules retain household shape, identity, and membership checks.
 
     // The exact-link holder may claim an active invitation once; the same
     // transaction must create their pending join request.
@@ -347,7 +339,6 @@ service cloud.firestore {
       // created atomically in the same transaction.
       allow create: if signedIn()
         && validHousehold(request.resource.data)
-        && request.resource.data.pets.size() <= 1
         && request.resource.data.ownerID == request.auth.uid
         && isOwnerAfter(householdId);
 
@@ -356,9 +347,6 @@ service cloud.firestore {
       // Members may update profile details; ownerID is immutable.
       allow update: if isMember(householdId)
         && validHousehold(request.resource.data)
-        && (request.resource.data.pets.size() <= 1
-            || multiPetActive(householdId)
-            || request.resource.data.pets.size() <= resource.data.pets.size())
         && ((!('ownerID' in request.resource.data) &&
              !('ownerID' in resource.data)) ||
             ('ownerID' in request.resource.data &&
