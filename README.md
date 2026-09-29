@@ -65,11 +65,49 @@ flutter pub get
 flutter run
 ```
 
-By default the app runs against `MockCareService`, an offline implementation
-that seeds a demo household (`Mochi`, invite code `PAW123`, partner `Alex`) and
-persists to `shared_preferences`. This means it works immediately with no
-Firebase project. In mock mode invitations auto-approve so the demo stays
-usable; the QR scanner is hidden (paste `PAW123` instead).
+For Android Studio debugging, open this **repository root** (the folder with
+`pubspec.yaml`), select the `PetTogether Flutter Debug` run configuration and
+an Android emulator, then click Debug. Opening only `android/` makes Android
+Studio run the native Gradle `app` configuration, which attaches a Java debugger
+instead of the Flutter/Dart debugger.
+
+By default the app initializes Firebase and uses `FirebaseCareService` when
+`android/app/google-services.json` is present. If Firebase initialization
+fails, it falls back to `MockCareService`, an offline implementation that seeds
+a demo household (`Mochi`, invite code `PAW123`, partner `Alex`) and persists
+to `shared_preferences`. In mock mode invitations auto-approve and the QR
+scanner is hidden (paste `PAW123` instead).
+
+### Google Play App Bundle
+
+Google Play uploads use a signed release `.aab`. The Android release build reads
+the upload key from `android/key.properties`; it no longer uses the debug key.
+If this package has already been uploaded to Play, use its existing upload key.
+For a new app, create one with Android Studio's bundled `keytool`:
+
+```sh
+"/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/keytool" \
+  -genkey -v -keystore "$HOME/upload-keystore.jks" \
+  -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+
+Keep the keystore and its passwords backed up securely. Copy
+`android/key.properties.example` to `android/key.properties`, then replace its
+placeholders with the passwords and the **absolute path** to the keystore.
+Both the keystore and `key.properties` are excluded from Git.
+
+From the repository root, build the bundle:
+
+```sh
+flutter pub get
+flutter build appbundle --release
+```
+
+The result is `build/app/outputs/bundle/release/app.aab`. Set a higher build
+number in `pubspec.yaml` (for example, `1.0.1+2`) for each Play update. If
+Android RevenueCat purchases should work in this build, add your production
+public key to the build command with
+`--dart-define=REVENUECAT_ANDROID_KEY=<production-public-key>`.
 
 ## Project structure
 
