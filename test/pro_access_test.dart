@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -70,6 +71,9 @@ Future<({ProAccess access, CareStore care})> _freeUser() async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.android);
+  tearDown(() => debugDefaultTargetPlatformOverride = null);
 
   test('expired household subscriptions no longer grant paid features', () {
     final expired = DateTime.now().subtract(const Duration(seconds: 1));
@@ -251,6 +255,35 @@ void main() {
     expect(access.canAddPet, isFalse);
     expect(access.canAttachPhotos, isFalse);
     expect(access.canUseAi, isFalse);
+  });
+
+  test('iOS cannot redeem or inherit the app-owned coupon', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    SharedPreferences.setMockInitialValues({});
+    final care = CareStore(MockCareService());
+    await care.createHousehold(
+      name: 'Mochi Family',
+      pets: [const Pet(id: 'pet-1', name: 'Mochi')],
+      caregiverName: 'Sam',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    final service = _CouponEntitlementService()
+      ..expiresAt = DateTime.now().add(const Duration(days: 1));
+    final access = ProAccess(
+      purchases: PurchaseStore(apiKey: ''),
+      care: care,
+      entitlements: service,
+      currentUid: () => 'user-1',
+    );
+    addTearDown(() {
+      access.dispose();
+      care.dispose();
+    });
+
+    expect(await access.redeemFreeCoupon('petlove2026'), isFalse);
+    await access.refreshFreeCoupon();
+    expect(access.isFreeCouponActive, isFalse);
+    expect(access.isPro, isFalse);
   });
 
   group('AppConfig.resolveRevenueCatKey', () {

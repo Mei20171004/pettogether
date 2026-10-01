@@ -11,6 +11,11 @@ abstract final class AppConfig {
   /// seeded demo data, so it works immediately.
   static const bool useFirebase = true;
 
+  /// App-owned codes cannot unlock digital features in an App Store build.
+  /// Keep the existing promotion on Android only; iOS uses StoreKit purchases.
+  static bool get customCouponEnabled =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
   // ---------------------------------------------------------------- RevenueCat
 
   /// RevenueCat Test Store key. Debug and profile builds only: the Test Store

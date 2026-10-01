@@ -314,8 +314,10 @@ class _ProViewState extends State<ProView> {
               children: [
                 _heroCard(context, language, purchases, selected),
                 const SizedBox(height: 16),
-                _couponCard(language, access),
-                const SizedBox(height: 22),
+                if (AppConfig.customCouponEnabled) ...[
+                  _couponCard(language, access),
+                  const SizedBox(height: 22),
+                ],
                 PetSectionTitle(
                   title: L10n.text(
                     language,

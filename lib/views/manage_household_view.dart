@@ -1,3 +1,5 @@
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -60,6 +62,8 @@ class ManageHouseholdView extends StatelessWidget {
                     _proCard(context, language),
                     const SizedBox(height: 24),
                     _signOutButton(language),
+                    const SizedBox(height: 10),
+                    _deleteAccountButton(context, store, language),
                   ],
                 ),
               ),
@@ -835,6 +839,275 @@ class ManageHouseholdView extends StatelessWidget {
       ),
     );
   }
+
+  Widget _deleteAccountButton(
+    BuildContext context,
+    CareStore store,
+    AppLanguage language,
+  ) {
+    return TextButton.icon(
+      onPressed: () => _confirmDeleteAccount(context, store, language),
+      icon: const Icon(Icons.delete_forever_outlined, size: 18),
+      label: Text(
+        L10n.text(language, 'Delete account', 'アカウントを削除', '删除账号', '계정 삭제'),
+      ),
+      style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
+    );
+  }
+
+  Future<void> _confirmDeleteAccount(
+    BuildContext context,
+    CareStore store,
+    AppLanguage language,
+  ) async {
+    final confirmation = TextEditingController();
+    final password = TextEditingController();
+    final successors = store.isOwner
+        ? store.caregivers
+              .where((member) => member.id != store.currentCaregiver?.id)
+              .toList(growable: false)
+        : const <Caregiver>[];
+    String? newOwnerUid = successors.length == 1 ? successors.single.id : null;
+
+    final request = await showDialog<_AccountDeletionRequest>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final canSubmit =
+              confirmation.text.trim() == 'DELETE' &&
+              (!store.isOwner || successors.isEmpty || newOwnerUid != null) &&
+              (!AuthService.instance.deletionNeedsPassword ||
+                  password.text.isNotEmpty);
+          return AlertDialog(
+            title: Text(
+              L10n.text(
+                language,
+                'Permanently delete account?',
+                'アカウントを完全に削除しますか？',
+                '永久删除账号？',
+                '계정을 영구 삭제할까요?',
+              ),
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    L10n.text(
+                      language,
+                      'Your account, personal profile, device tokens, and subscription status stored by pettogether will be deleted. Shared care history will keep the event but remove your identity.',
+                      'アカウント、個人プロフィール、端末トークン、pettogetherに保存された購読状態が削除されます。共有ケア履歴は残りますが、あなたの識別情報は削除されます。',
+                      '你的账号、个人资料、设备令牌及 pettogether 保存的订阅状态将被删除。共享照护记录会保留事件，但会移除你的身份信息。',
+                      '계정, 개인 프로필, 기기 토큰 및 pettogether에 저장된 구독 상태가 삭제됩니다. 공유 돌봄 기록은 유지되지만 신원 정보는 제거됩니다.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    L10n.text(
+                      language,
+                      'Important: deleting this account does not cancel an App Store subscription. Cancel it separately in Apple ID Settings → Subscriptions if you no longer want it to renew.',
+                      '重要：アカウントを削除してもApp Storeの購読は解約されません。更新を停止する場合は、Apple ID設定の「サブスクリプション」で別途解約してください。',
+                      '重要：删除账号不会取消 App Store 订阅。如不希望继续续费，请另行前往 Apple ID 设置 → 订阅中取消。',
+                      '중요: 계정을 삭제해도 App Store 구독은 취소되지 않습니다. 갱신을 원하지 않으면 Apple ID 설정 → 구독에서 별도로 취소하세요.',
+                    ),
+                    style: TextStyle(
+                      color: Colors.red.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (successors.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      initialValue: newOwnerUid,
+                      decoration: InputDecoration(
+                        labelText: L10n.text(
+                          language,
+                          'New household owner',
+                          '新しい家族オーナー',
+                          '新的家庭 Owner',
+                          '새 가족 소유자',
+                        ),
+                      ),
+                      items: [
+                        for (final member in successors)
+                          DropdownMenuItem(
+                            value: member.id,
+                            child: Text(member.displayName),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setDialogState(() => newOwnerUid = value),
+                    ),
+                  ],
+                  if (AuthService.instance.deletionNeedsPassword) ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: password,
+                      obscureText: true,
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: InputDecoration(
+                        labelText: L10n.text(
+                          language,
+                          'Current password',
+                          '現在のパスワード',
+                          '当前密码',
+                          '현재 비밀번호',
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: confirmation,
+                    autocorrect: false,
+                    onChanged: (_) => setDialogState(() {}),
+                    decoration: InputDecoration(
+                      labelText: L10n.text(
+                        language,
+                        'Type DELETE to confirm',
+                        '確認のためDELETEと入力',
+                        '输入 DELETE 以确认',
+                        '확인하려면 DELETE 입력',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(L10n.text(language, 'Cancel', 'キャンセル', '取消', '취소')),
+              ),
+              FilledButton(
+                onPressed: canSubmit
+                    ? () => Navigator.pop(
+                        dialogContext,
+                        _AccountDeletionRequest(
+                          newOwnerUid: newOwnerUid,
+                          password: password.text,
+                        ),
+                      )
+                    : null,
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                child: Text(
+                  L10n.text(
+                    language,
+                    'Delete permanently',
+                    '完全に削除',
+                    '永久删除',
+                    '영구 삭제',
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    confirmation.dispose();
+    password.dispose();
+    if (request == null || !context.mounted) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      await AuthService.instance.deleteAccount(
+        newOwnerUid: request.newOwnerUid,
+        password: request.password,
+      );
+      if (context.mounted) Navigator.of(context).pop();
+    } on FirebaseAuthException catch (error) {
+      if (!context.mounted) return;
+      Navigator.of(context).pop();
+      _showDeletionError(context, language, switch (error.code) {
+        'wrong-password' || 'invalid-credential' => L10n.text(
+          language,
+          'The password is incorrect. Your account was not deleted.',
+          'パスワードが正しくありません。アカウントは削除されていません。',
+          '密码不正确，账号未被删除。',
+          '비밀번호가 올바르지 않습니다. 계정은 삭제되지 않았습니다.',
+        ),
+        'network-request-failed' => L10n.text(
+          language,
+          'Check your connection and try again. Your account was not deleted.',
+          '通信状況を確認して再試行してください。アカウントは削除されていません。',
+          '请检查网络后重试，账号未被删除。',
+          '네트워크를 확인한 후 다시 시도하세요. 계정은 삭제되지 않았습니다.',
+        ),
+        _ => L10n.text(
+          language,
+          'Sign-in verification failed. Your account was not deleted.',
+          '本人確認に失敗しました。アカウントは削除されていません。',
+          '登录验证失败，账号未被删除。',
+          '로그인 확인에 실패했습니다. 계정은 삭제되지 않았습니다.',
+        ),
+      });
+    } on FirebaseFunctionsException catch (error) {
+      if (!context.mounted) return;
+      Navigator.of(context).pop();
+      _showDeletionError(
+        context,
+        language,
+        error.code == 'failed-precondition'
+            ? L10n.text(
+                language,
+                'Choose a valid new household owner and try again.',
+                '有効な新しい家族オーナーを選んで再試行してください。',
+                '请选择有效的新家庭 Owner 后重试。',
+                '유효한 새 가족 소유자를 선택한 후 다시 시도하세요.',
+              )
+            : L10n.text(
+                language,
+                'The server could not finish deletion. Please try again; repeated attempts are safe.',
+                'サーバーで削除を完了できませんでした。再試行してください。繰り返しても問題ありません。',
+                '服务器未能完成删除。请重试，重复尝试不会产生额外影响。',
+                '서버에서 삭제를 완료하지 못했습니다. 다시 시도해 주세요. 반복해도 안전합니다.',
+              ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      Navigator.of(context).pop();
+      _showDeletionError(
+        context,
+        language,
+        L10n.text(
+          language,
+          'Deletion did not finish. Please check your connection and try again.',
+          '削除は完了していません。通信状況を確認して再試行してください。',
+          '删除未完成。请检查网络后重试。',
+          '삭제가 완료되지 않았습니다. 네트워크를 확인한 후 다시 시도하세요.',
+        ),
+      );
+    }
+  }
+
+  void _showDeletionError(
+    BuildContext context,
+    AppLanguage language,
+    String message,
+  ) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(
+          label: L10n.text(language, 'OK', 'OK', '知道了', '확인'),
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+}
+
+class _AccountDeletionRequest {
+  const _AccountDeletionRequest({this.newOwnerUid, required this.password});
+
+  final String? newOwnerUid;
+  final String password;
 }
 
 /// Per-pet care card: today's progress bar, next care item and the pet's

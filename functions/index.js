@@ -7,26 +7,73 @@
 // format `<routineID>_yyyy-MM-dd`.
 const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onCall, onRequest } = require("firebase-functions/v2/https");
+const { HttpsError, onCall, onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 const { getAuth } = require("firebase-admin/auth");
+const { getStorage } = require("firebase-admin/storage");
 const { issueWebSignInToken } = require("./web_sign_in");
+const {
+  AccountDeletionError,
+  deleteAccountData,
+} = require("./account_deletion");
 const crypto = require("crypto");
 
 initializeApp();
 
 const db = getFirestore();
 const region = "asia-northeast1";
+const revenuecatApiSecret = defineSecret("REVENUECAT_SECRET_API_KEY");
 
 // Called only when an authenticated app user opens a trusted Hosting page.
 // The page signs in with the returned token through the WebView bridge.
 exports.issueWebSignInToken = onCall(
   { region, minInstances: 0, maxInstances: 5 },
   (request) => issueWebSignInToken(request, getAuth()),
+);
+
+exports.deleteAccount = onCall(
+  {
+    region,
+    timeoutSeconds: 120,
+    maxInstances: 5,
+    secrets: [revenuecatApiSecret],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Sign in before deleting your account.");
+    }
+    const requestedOwner = request.data?.newOwnerUid;
+    const newOwnerUid = typeof requestedOwner === "string" && requestedOwner.length > 0
+      ? requestedOwner
+      : null;
+    try {
+      await deleteAccountData({
+        db,
+        auth: getAuth(),
+        bucket: getStorage().bucket(),
+        uid,
+        newOwnerUid,
+        deleteRevenueCatCustomer,
+        recomputeHouseholdPro,
+        logger,
+      });
+      return { deleted: true };
+    } catch (error) {
+      if (error instanceof AccountDeletionError) {
+        throw new HttpsError("failed-precondition", error.message, error.details);
+      }
+      logger.error("Account deletion failed", { uid, message: error.message });
+      throw new HttpsError(
+        "internal",
+        "Account deletion could not be completed. Please try again; repeated attempts are safe.",
+      );
+    }
+  },
 );
 const defaultTimeZone = "Asia/Tokyo";
 const invalidTokenErrors = new Set([
@@ -334,6 +381,17 @@ exports.revenuecatWebhook = onRequest(
       response.status(200).send("ignored");
       return;
     }
+    try {
+      await getAuth().getUser(uid);
+    } catch (error) {
+      if (error.code === "auth/user-not-found") {
+        await db.collection("entitlements").doc(uid).delete();
+        logger.info("RevenueCat webhook ignored for deleted account", { uid });
+        response.status(200).send("ignored");
+        return;
+      }
+      throw error;
+    }
 
     const entitlementIds = Array.isArray(event.entitlement_ids)
       ? event.entitlement_ids.filter((id) => typeof id === "string")
@@ -434,6 +492,21 @@ function expirationTimestamp(value) {
   const millis = Number(value);
   if (!Number.isFinite(millis) || millis <= 0) return null;
   return Timestamp.fromMillis(millis);
+}
+
+async function deleteRevenueCatCustomer(uid) {
+  const key = revenuecatApiSecret.value();
+  if (!key) throw new Error("RevenueCat secret API key is not configured.");
+  const response = await fetch(
+    `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(uid)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${key}` },
+    },
+  );
+  if (response.status !== 200 && response.status !== 404) {
+    throw new Error(`RevenueCat customer deletion failed with ${response.status}.`);
+  }
 }
 
 /// true = grant, false = revoke, null = an event type we do not act on.

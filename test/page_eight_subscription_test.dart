@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +12,9 @@ import 'package:pettogether/views/pro_view.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.android);
+  tearDown(() => debugDefaultTargetPlatformOverride = null);
 
   Widget paywall(ProFeature feature) {
     return MultiProvider(
@@ -68,5 +72,16 @@ void main() {
     );
     expect(find.textContaining('同时使用时合计 ¥600/月'), findsOneWidget);
     expect(find.text('第 2 只及更多宠物'), findsNothing);
+  });
+
+  testWidgets('iOS paywall does not expose the app-owned coupon', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    await tester.pumpWidget(paywall(ProFeature.health));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Free coupon'), findsNothing);
+    expect(find.text('Apply coupon'), findsNothing);
   });
 }
