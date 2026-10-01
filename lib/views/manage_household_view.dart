@@ -797,29 +797,32 @@ class ManageHouseholdView extends StatelessWidget {
 
   Widget _proCard(BuildContext context, AppLanguage language) {
     return PetCard(
-      child: ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const CareIcon(
-            icon: Icons.workspace_premium_rounded,
-            color: PawColors.purple,
-            size: 44),
-        title: Text(
-          L10n.text(language, 'pettogether Pro', 'pettogether Pro', 'pettogether Pro',
-              'pettogether Pro'),
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: PawColors.ink,
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const CareIcon(
+              icon: Icons.workspace_premium_rounded,
+              color: PawColors.purple,
+              size: 44),
+          title: Text(
+            L10n.text(language, 'pettogether Pro', 'pettogether Pro',
+                'pettogether Pro', 'pettogether Pro'),
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: PawColors.ink,
+            ),
           ),
-        ),
-        subtitle: Text(
-          L10n.text(language, 'Smart reminders, insights and more',
-              'スマート通知、洞察など', '智能提醒、洞察等', '스마트 알림, 인사이트 등'),
-          style: const TextStyle(fontSize: 12, color: PawColors.muted),
-        ),
-        trailing: const Icon(Icons.chevron_right, color: PawColors.purple),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const ProView()),
+          subtitle: Text(
+            L10n.text(language, 'Smart reminders, insights and more',
+                'スマート通知、洞察など', '智能提醒、洞察等', '스마트 알림, 인사이트 등'),
+            style: const TextStyle(fontSize: 12, color: PawColors.muted),
+          ),
+          trailing: const Icon(Icons.chevron_right, color: PawColors.purple),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ProView()),
+          ),
         ),
       ),
     );

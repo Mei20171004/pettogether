@@ -14,8 +14,6 @@ import 'package:pettogether/views/manage_household_view.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  tearDown(() => debugDefaultTargetPlatformOverride = null);
-
   Widget login() => ChangeNotifierProvider(
     create: (_) => AppLanguageStore(AppLanguage.english),
     child: const MaterialApp(home: LoginView()),
@@ -25,20 +23,28 @@ void main() {
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    await tester.pumpWidget(login());
+    try {
+      await tester.pumpWidget(login());
 
-    expect(find.text('Continue with Google'), findsOneWidget);
-    expect(find.text('Continue with Apple'), findsOneWidget);
+      expect(find.text('Continue with Google'), findsOneWidget);
+      expect(find.text('Continue with Apple'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('Android keeps Google without presenting an Apple-only flow', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    await tester.pumpWidget(login());
+    try {
+      await tester.pumpWidget(login());
 
-    expect(find.text('Continue with Google'), findsOneWidget);
-    expect(find.text('Continue with Apple'), findsNothing);
+      expect(find.text('Continue with Google'), findsOneWidget);
+      expect(find.text('Continue with Apple'), findsNothing);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets(
@@ -52,7 +58,7 @@ void main() {
         pets: [const Pet(id: 'pet-1', name: 'Mochi')],
         caregiverName: 'Sam',
       );
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
 
       await tester.pumpWidget(
         MultiProvider(

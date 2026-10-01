@@ -122,9 +122,7 @@ class AuthService {
 
     await FirebaseFunctions.instanceFor(region: 'asia-northeast1')
         .httpsCallable('deleteAccount')
-        .call<Map<String, dynamic>>({
-          if (newOwnerUid != null) 'newOwnerUid': newOwnerUid,
-        });
+        .call<Map<String, dynamic>>({'newOwnerUid': ?newOwnerUid});
 
     try {
       final google = await _googleSignIn();

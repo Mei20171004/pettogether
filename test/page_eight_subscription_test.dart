@@ -13,9 +13,6 @@ import 'package:pettogether/views/pro_view.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.android);
-  tearDown(() => debugDefaultTargetPlatformOverride = null);
-
   Widget paywall(ProFeature feature) {
     return MultiProvider(
       providers: [
@@ -40,48 +37,62 @@ void main() {
   testWidgets('multi-pet paywall explains the free first pet and ¥300 price', (
     tester,
   ) async {
-    await tester.pumpWidget(paywall(ProFeature.multiPet));
-    await tester.pumpAndSettle();
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await tester.pumpWidget(paywall(ProFeature.multiPet));
+      await tester.pumpAndSettle();
 
-    expect(find.text('更多宠物'), findsWidgets);
-    expect(find.textContaining('第 1 只宠物免费'), findsOneWidget);
-    expect(find.text('¥300 / 月'), findsOneWidget);
-    expect(find.text('Free coupon'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.textContaining('同时使用时合计 ¥600/月'),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.textContaining('同时使用时合计 ¥600/月'), findsOneWidget);
-    expect(find.text('医疗记录照片'), findsNothing);
+      expect(find.text('更多宠物'), findsWidgets);
+      expect(find.textContaining('第 1 只宠物免费'), findsOneWidget);
+      expect(find.text('¥300 / 月'), findsOneWidget);
+      expect(find.text('Free coupon'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.textContaining('同时使用时合计 ¥600/月'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.textContaining('同时使用时合计 ¥600/月'), findsOneWidget);
+      expect(find.text('医疗记录照片'), findsNothing);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('AI paywall is separate and costs ¥300 per month', (
     tester,
   ) async {
-    await tester.pumpWidget(paywall(ProFeature.ai));
-    await tester.pumpAndSettle();
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await tester.pumpWidget(paywall(ProFeature.ai));
+      await tester.pumpAndSettle();
 
-    expect(find.text('AI 护理录入'), findsWidgets);
-    expect(find.textContaining('每月 ¥300'), findsOneWidget);
-    expect(find.text('¥300 / 月'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.textContaining('同时使用时合计 ¥600/月'),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.textContaining('同时使用时合计 ¥600/月'), findsOneWidget);
-    expect(find.text('第 2 只及更多宠物'), findsNothing);
+      expect(find.text('AI 护理录入'), findsWidgets);
+      expect(find.textContaining('每月 ¥300'), findsOneWidget);
+      expect(find.text('¥300 / 月'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.textContaining('同时使用时合计 ¥600/月'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.textContaining('同时使用时合计 ¥600/月'), findsOneWidget);
+      expect(find.text('第 2 只及更多宠物'), findsNothing);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('iOS paywall does not expose the app-owned coupon', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    await tester.pumpWidget(paywall(ProFeature.health));
-    await tester.pumpAndSettle();
+    try {
+      await tester.pumpWidget(paywall(ProFeature.health));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Free coupon'), findsNothing);
-    expect(find.text('Apply coupon'), findsNothing);
+      expect(find.text('Free coupon'), findsNothing);
+      expect(find.text('Apply coupon'), findsNothing);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 }
