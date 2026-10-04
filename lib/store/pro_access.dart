@@ -65,7 +65,8 @@ class ProAccess extends ChangeNotifier {
 
   /// True when any Pro feature should be available.
   bool get isFreeCouponActive =>
-      _couponExpiresAt?.isAfter(DateTime.now()) ?? false;
+      AppConfig.customCouponEnabled &&
+      (_couponExpiresAt?.isAfter(DateTime.now()) ?? false);
 
   DateTime? get freeCouponExpiresAt =>
       isFreeCouponActive ? _couponExpiresAt : null;
@@ -139,6 +140,10 @@ class ProAccess extends ChangeNotifier {
   /// clears coupon access rather than trusting a cached grant.
   Future<void> refreshFreeCoupon() async {
     _syncUsage();
+    if (!AppConfig.customCouponEnabled) {
+      _setCouponExpiry(null);
+      return;
+    }
     final uid = _uid;
     final service = _entitlements;
     if (uid == null || service == null) {
@@ -156,6 +161,7 @@ class ProAccess extends ChangeNotifier {
   /// Returns false when Firestore rejects a wrong or expired code.
   Future<bool> redeemFreeCoupon(String code) async {
     _syncUsage();
+    if (!AppConfig.customCouponEnabled) return false;
     final uid = _uid;
     final service = _entitlements;
     if (uid == null || service == null || code.trim().isEmpty) return false;

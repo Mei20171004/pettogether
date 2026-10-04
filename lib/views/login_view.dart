@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,7 +8,7 @@ import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import 'widgets/common.dart';
 
-/// Email/password + Google sign-in, shown when no user is authenticated.
+/// Email/password, Google, and Apple sign-in when no user is authenticated.
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
 
@@ -60,6 +61,22 @@ class _LoginViewState extends State<LoginView> {
     });
     try {
       await AuthService.instance.signInWithGoogle();
+    } on FirebaseAuthException catch (e) {
+      setState(() => _error = _messageFor(e));
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _submitApple() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await AuthService.instance.signInWithApple();
     } on FirebaseAuthException catch (e) {
       setState(() => _error = _messageFor(e));
     } catch (e) {
@@ -207,6 +224,32 @@ class _LoginViewState extends State<LoginView> {
                               'Google로 계속하기',
                             )),
                           ),
+                          if (defaultTargetPlatform == TargetPlatform.iOS ||
+                              defaultTargetPlatform ==
+                                  TargetPlatform.macOS) ...[
+                            const SizedBox(height: 10),
+                            FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.black,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size(double.infinity, 52),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              onPressed: _busy ? null : _submitApple,
+                              icon: const Icon(Icons.apple, size: 23),
+                              label: Text(
+                                L10n.text(
+                                  language,
+                                  'Continue with Apple',
+                                  'Appleで続ける',
+                                  '使用 Apple 继续',
+                                  'Apple로 계속하기',
+                                ),
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 10),
                           TextButton(
                             onPressed: _busy
