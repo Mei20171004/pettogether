@@ -25,9 +25,18 @@ void main() {
       );
     });
 
-    test('classifies network failures separately', () {
+    test('a time limit does not imply a network connection failure', () {
       expect(
         AiService.classifyFailure(TimeoutException('timed out')).kind,
+        AiFailureKind.timeout,
+      );
+      expect(
+        AiService.classifyFailure(
+          FirebaseException(
+            plugin: 'firebase_ai',
+            code: 'network-request-failed',
+          ),
+        ).kind,
         AiFailureKind.network,
       );
     });

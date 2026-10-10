@@ -44,6 +44,7 @@ class AiService {
           // A parsed care plan is small. Capping output bounds the cost of a
           // single call and of a prompt that tries to make the model ramble.
           maxOutputTokens: 2048,
+          thinkingConfig: ThinkingConfig.withThinkingLevel(ThinkingLevel.low),
         ),
       );
 
@@ -95,7 +96,7 @@ class AiService {
       return AiFailure(AiFailureKind.quota, error.toString());
     }
     if (error is TimeoutException) {
-      return AiFailure(AiFailureKind.network, error.toString());
+      return AiFailure(AiFailureKind.timeout, error.toString());
     }
     if (error is FormatException) {
       return AiFailure(AiFailureKind.invalidResponse, error.toString());
@@ -201,6 +202,7 @@ Rules:
 enum AiFailureKind {
   configuration,
   network,
+  timeout,
   authorization,
   quota,
   unsupportedRegion,

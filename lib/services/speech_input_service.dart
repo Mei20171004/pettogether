@@ -32,7 +32,10 @@ class SpeechInputService extends ChangeNotifier {
   String? _diagnostic;
   bool _initialized = false;
   int _session = 0;
+  int _segment = 0;
+  String? _localeId;
   Completer<void>? _sessionDone;
+  Future<void>? _restart;
 
   SpeechInputState get state => _state;
   String get transcript => _transcript;
@@ -84,21 +87,9 @@ class SpeechInputService extends ChangeNotifier {
         return;
       }
 
-      final localeId = await _localeForLanguage(languageCode);
+      _localeId = await _localeForLanguage(languageCode);
       if (session != _session) return;
-      _sessionDone = Completer<void>();
-      await _speech.listen(
-        onResult: (result) => _handleResult(session, result),
-        listenOptions: SpeechListenOptions(
-          localeId: localeId,
-          listenFor: const Duration(minutes: 1),
-          pauseFor: const Duration(seconds: 3),
-          listenMode: ListenMode.dictation,
-          partialResults: true,
-          cancelOnError: true,
-          autoPunctuation: true,
-        ),
-      );
+      await _listen(session);
       if (session == _session && _state == SpeechInputState.initializing) {
         _setState(SpeechInputState.listening);
       }
@@ -114,24 +105,15 @@ class SpeechInputService extends ChangeNotifier {
   Future<void> stop() async {
     if (!isListening) return;
     final session = _session;
-    final recognizer = _speech;
-    final done = _sessionDone ??= Completer<void>();
     _setState(SpeechInputState.stopping);
     try {
-      await recognizer.stop();
-      var timedOut = false;
-      await done.future.timeout(
-        const Duration(seconds: 3),
-        onTimeout: () => timedOut = true,
-      );
+      // A pause may already be draining final words or starting a new segment.
+      // Wait for that operation before stopping, so it cannot reopen the mic.
+      await _restart;
       if (session != _session) return;
-      if (timedOut) {
-        await recognizer.cancel();
-        if (session != _session) return;
-        _speech = SpeechToText();
-        _initialized = false;
-        _session++;
-      }
+      await _finishSegment();
+      if (session != _session) return;
+      _session++;
       _setState(SpeechInputState.idle);
     } catch (error, stackTrace) {
       if (session != _session) return;
@@ -144,8 +126,11 @@ class SpeechInputService extends ChangeNotifier {
 
   Future<void> cancel() async {
     final recognizer = _speech;
-    _session++;
+    final session = ++_session;
     _completeSession();
+    _setState(SpeechInputState.stopping);
+    await _restart;
+    if (session != _session) return;
     if (_initialized) {
       try {
         await recognizer.cancel();
@@ -153,6 +138,7 @@ class SpeechInputService extends ChangeNotifier {
         debugPrint('Cancelling speech recognition failed: $error\n$stackTrace');
       }
     }
+    if (session != _session) return;
     _diagnostic = null;
     _setState(SpeechInputState.idle);
   }
@@ -168,8 +154,55 @@ class SpeechInputService extends ChangeNotifier {
     return null;
   }
 
-  void _handleResult(int session, SpeechRecognitionResult result) {
-    if (session != _session) return;
+  Future<void> _listen(int session) async {
+    final segment = ++_segment;
+    _sessionDone = Completer<void>();
+    await _speech.listen(
+      onResult: (result) => _handleResult(session, segment, result),
+      listenOptions: SpeechListenOptions(
+        localeId: _localeId,
+        listenFor: const Duration(minutes: 1),
+        listenMode: ListenMode.dictation,
+        partialResults: true,
+        cancelOnError: false,
+        autoPunctuation: true,
+      ),
+    );
+  }
+
+  Future<void> _finishSegment() async {
+    final done = _sessionDone ??= Completer<void>();
+    await _speech.stop();
+    var timedOut = false;
+    await done.future.timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => timedOut = true,
+    );
+    if (timedOut) await _speech.cancel();
+  }
+
+  void _resumeAfterPause() {
+    if (_restart != null || !isListening) return;
+    final session = _session;
+    _restart = () async {
+      try {
+        await _finishSegment();
+        if (session != _session || !isListening) return;
+        _prefix = _transcript.trimRight();
+        await _listen(session);
+      } catch (error, stackTrace) {
+        if (session != _session) return;
+        _diagnostic = error.toString();
+        debugPrint('Resuming speech recognition failed: $error\n$stackTrace');
+        _setState(SpeechInputState.error);
+      } finally {
+        _restart = null;
+      }
+    }();
+  }
+
+  void _handleResult(int session, int segment, SpeechRecognitionResult result) {
+    if (session != _session || segment != _segment) return;
     final words = result.recognizedWords.trim();
     final separator = _prefix.isEmpty || words.isEmpty ? '' : ' ';
     _transcript = '$_prefix$separator$words';
@@ -179,39 +212,47 @@ class SpeechInputService extends ChangeNotifier {
   void _handleStatus(SpeechToText recognizer, String status) {
     if (!identical(recognizer, _speech)) return;
     if (status == SpeechToText.listeningStatus) {
-      _setState(SpeechInputState.listening);
+      if (_state == SpeechInputState.initializing) {
+        _setState(SpeechInputState.listening);
+      }
       return;
     }
     if (status == SpeechToText.notListeningStatus &&
         _state == SpeechInputState.listening) {
-      // Some recognizers stop on a pause without ever sending `done`.
-      // Use the same bounded final-result wait as the explicit stop action.
-      unawaited(stop());
+      // Native phrase limits must not be mistaken for the user's Done action.
+      _resumeAfterPause();
       return;
     }
     if (status == SpeechToText.doneStatus) {
       _completeSession();
-      if (_state == SpeechInputState.listening ||
-          _state == SpeechInputState.stopping) {
-        _setState(SpeechInputState.idle);
-      }
+      _resumeAfterPause();
     }
   }
 
   void _handleError(SpeechToText recognizer, SpeechRecognitionError error) {
     if (!identical(recognizer, _speech)) return;
+    if (_state != SpeechInputState.listening &&
+        _state != SpeechInputState.initializing) {
+      return;
+    }
     _completeSession();
     _diagnostic = '${error.errorMsg} (permanent: ${error.permanent})';
     debugPrint('Speech recognition error: $_diagnostic');
     final message = error.errorMsg.toLowerCase();
-    if (message.contains('permission')) {
+    if (message.contains('permission') || message.contains('not_authorized')) {
       _setState(SpeechInputState.permissionDenied);
     } else if (message.contains('no_match') ||
         message.contains('speech_timeout')) {
-      _setState(SpeechInputState.noSpeech);
+      if (isListening) {
+        _resumeAfterPause();
+      } else {
+        _setState(SpeechInputState.noSpeech);
+      }
+      return;
     } else {
       _setState(SpeechInputState.error);
     }
+    unawaited(recognizer.cancel());
   }
 
   void _setState(SpeechInputState value) {

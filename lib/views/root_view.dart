@@ -371,6 +371,13 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
         '无法连接 AI。请检查网络后重试。',
         'AI에 연결할 수 없습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.',
       ),
+      AiFailureKind.timeout => L10n.text(
+        language,
+        'AI took too long to respond. Your text is kept; please retry.',
+        'AIの応答に時間がかかりすぎました。入力は保持されています。再試行してください。',
+        'AI 响应超时。输入内容已保留，请重试。',
+        'AI 응답 시간이 초과되었습니다. 입력은 유지됩니다. 다시 시도해 주세요.',
+      ),
       AiFailureKind.authorization => L10n.text(
         language,
         'This app build could not be verified for AI. Reopen or update the app, then try again.',
