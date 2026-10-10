@@ -244,10 +244,10 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
         context,
         reason: L10n.text(
           language,
-          'AI care entry requires the ¥300/month AI plan.',
-          'AIケア入力には月額300円のAIプランが必要です。',
-          '使用 AI 护理录入需要订阅每月 ¥300 的 AI 功能。',
-          'AI 케어 입력에는 월 ¥300 AI 구독이 필요합니다.',
+          'AI care entry requires the AI subscription.',
+          'AIケア入力にはAIプランが必要です。',
+          '使用 AI 护理录入需要订阅 AI 功能。',
+          'AI 케어 입력에는 AI 구독이 필요합니다.',
         ),
         feature: ProFeature.ai,
       );
@@ -272,13 +272,17 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
     await _showAiDialog(context);
   }
 
-  Future<void> _showAiDialog(BuildContext context) async {
+  Future<void> _showAiDialog(
+    BuildContext context, {
+    String initialText = '',
+  }) async {
     final access = context.read<ProAccess>();
     final language = context.read<AppLanguageStore>().language;
     final text = await showDialog<String>(
       context: context,
       builder: (_) => AiInputDialog(
         language: language,
+        initialText: initialText,
         aiParsesLeft: access.aiParsesLeft,
         aiParseLimit: access.aiParseLimit,
         showBalance: access.hasAi,
@@ -289,11 +293,33 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
     if (trimmed == null || trimmed.isEmpty) return;
 
     if (!context.mounted) return;
-    showDialog<void>(
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final loading = DialogRoute<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                L10n.text(
+                  language,
+                  'Generating your care plan…',
+                  'ケアプランを作成中…',
+                  '正在生成护理计划…',
+                  '돌봄 계획을 만드는 중…',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
+    unawaited(navigator.push(loading));
 
     final pets = context.read<CareStore>().household?.pets ?? const <Pet>[];
     try {
@@ -302,7 +328,7 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
       // call does not eat the user's quota.
       unawaited(access.recordAiParse());
       if (!context.mounted) return;
-      Navigator.of(context).pop(); // close loading
+      if (loading.isActive) navigator.removeRoute(loading);
       Navigator.of(context).push(
         MaterialPageRoute(
           fullscreenDialog: true,
@@ -311,11 +337,20 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
       );
     } catch (error, stackTrace) {
       if (!context.mounted) return;
-      Navigator.of(context).pop(); // close loading
+      if (loading.isActive) navigator.removeRoute(loading);
       debugPrint('AI parse failed: $error\n$stackTrace');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_aiFailureMessage(language, error))),
+        SnackBar(
+          duration: const Duration(seconds: 10),
+          content: Text(_aiFailureMessage(language, error)),
+          action: SnackBarAction(
+            label: L10n.text(language, 'Retry', '再試行', '重试', '다시 시도'),
+            onPressed: () => _showAiDialog(context, initialText: trimmed),
+          ),
+        ),
       );
+    } finally {
+      if (navigator.mounted && loading.isActive) navigator.removeRoute(loading);
     }
   }
 

@@ -53,11 +53,13 @@ class AiService {
                 .map((p) => '- ${p.name} (type: ${p.type.rawValue})')
                 .join('\n');
 
-      final response = await model.generateContent([
-        Content.text(
-          'Existing pets:\n$petContext\n\nUser instruction:\n$instruction',
-        ),
-      ]);
+      final response = await model
+          .generateContent([
+            Content.text(
+              'Existing pets:\n$petContext\n\nUser instruction:\n$instruction',
+            ),
+          ])
+          .timeout(const Duration(seconds: 30));
 
       final raw = (response.text ?? '').trim();
       if (raw.isEmpty) {

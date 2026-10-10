@@ -19,6 +19,8 @@ class PurchaseStore extends ChangeNotifier {
   final String? _overrideKey;
 
   bool _configured = false;
+  Future<void>? _initialization;
+  bool _isRestoring = false;
   bool _isLoadingOfferings = false;
   bool _isPurchasing = false;
   Set<String> _activeEntitlementIds = const {};
@@ -30,6 +32,8 @@ class PurchaseStore extends ChangeNotifier {
   /// True once the SDK is configured. Stays false on unsupported platforms
   /// (web, desktop) so the UI can fall back gracefully.
   bool get isAvailable => _configured;
+  bool get isInitializing => _initialization != null;
+  bool get isRestoring => _isRestoring;
   bool get isLoadingOfferings => _isLoadingOfferings;
   bool get isPurchasing => _isPurchasing;
   bool get isPro => hasEntitlement(AppConfig.proEntitlementId);
@@ -45,33 +49,54 @@ class PurchaseStore extends ChangeNotifier {
   static bool get _platformSupported =>
       !kIsWeb && (Platform.isIOS || Platform.isAndroid);
 
-  Future<void> initialize() async {
-    if (_configured || !_platformSupported) return;
+  Future<void> initialize() {
+    return _initialization ??= _initialize().whenComplete(() {
+      _initialization = null;
+      notifyListeners();
+    });
+  }
+
+  Future<void> _initialize() async {
+    if (!_platformSupported) return;
     final key =
         _overrideKey ?? AppConfig.resolveRevenueCatKey(isIOS: Platform.isIOS);
     if (key == null || key.isEmpty) {
-      // A release build with no store key leaves every paid feature locked,
-      // which is the safe failure. Configuring with a `test_` key here would
-      // make the RevenueCat SDK terminate the app on purpose.
-      if (kReleaseMode) {
-        _lastError = 'RevenueCat key was not provided to this build.';
-        notifyListeners();
-      }
+      _lastError = 'Purchase configuration is missing for this build.';
+      notifyListeners();
       return;
     }
     try {
-      await Purchases.setLogLevel(
-        kReleaseMode ? LogLevel.warn : LogLevel.debug,
-      );
-      await Purchases.configure(PurchasesConfiguration(key));
-      _configured = true;
-      Purchases.addCustomerInfoUpdateListener(_applyCustomerInfo);
-      _applyCustomerInfo(await Purchases.getCustomerInfo());
+      if (!_configured) {
+        await Purchases.setLogLevel(
+          kReleaseMode ? LogLevel.warn : LogLevel.debug,
+        );
+        await Purchases.configure(PurchasesConfiguration(key));
+        _configured = true;
+        Purchases.addCustomerInfoUpdateListener(_applyCustomerInfo);
+      }
+      // A failed customer-info request must not prevent products loading.
+      try {
+        _applyCustomerInfo(
+          await Purchases.getCustomerInfo().timeout(
+            const Duration(seconds: 20),
+          ),
+        );
+      } catch (error) {
+        _recordError('customerInfo', error);
+      }
       await refreshOfferings();
-    } catch (e) {
-      _lastError = e.toString();
+    } catch (error) {
+      _recordError('initialize', error);
       notifyListeners();
     }
+  }
+
+  void _recordError(String operation, Object error) {
+    _lastError = error.toString();
+    final code = error is PlatformException
+        ? PurchasesErrorHelper.getErrorCode(error).name
+        : error.runtimeType.toString();
+    debugPrint('Purchases $operation failed [$code]: $error');
   }
 
   /// Ties RevenueCat's app user ID to the signed-in Firebase user so
@@ -102,15 +127,17 @@ class PurchaseStore extends ChangeNotifier {
   }
 
   Future<void> refreshOfferings() async {
-    if (!_configured) return;
+    if (!_configured || _isLoadingOfferings) return;
     _isLoadingOfferings = true;
     notifyListeners();
     try {
-      final offerings = await Purchases.getOfferings();
+      final offerings = await Purchases.getOfferings().timeout(
+        const Duration(seconds: 20),
+      );
       _packages = offerings.current?.availablePackages ?? const [];
       _lastError = null;
-    } catch (e) {
-      _lastError = e.toString();
+    } catch (error) {
+      _recordError('offerings', error);
     } finally {
       _isLoadingOfferings = false;
       notifyListeners();
@@ -123,19 +150,27 @@ class PurchaseStore extends ChangeNotifier {
     Package package, {
     String entitlementId = AppConfig.proEntitlementId,
   }) async {
-    if (!_configured || _isPurchasing) return false;
+    if (!_configured) throw StateError('Purchases are not configured.');
+    if (_isPurchasing) return false;
     _isPurchasing = true;
     notifyListeners();
     try {
       final result = await Purchases.purchase(PurchaseParams.package(package));
       _applyCustomerInfo(result.customerInfo);
-      return hasEntitlement(entitlementId);
+      if (!hasEntitlement(entitlementId)) {
+        debugPrint(
+          'Purchase completed without required entitlement: $entitlementId',
+        );
+        throw const PurchaseAccessPending();
+      }
+      return true;
     } on PlatformException catch (e) {
       final code = PurchasesErrorHelper.getErrorCode(e);
       if (code == PurchasesErrorCode.purchaseCancelledError) return false;
-      _lastError = e.message ?? code.name;
+      _recordError('purchase', e);
       rethrow;
     } finally {
+      _isRestoring = false;
       _isPurchasing = false;
       notifyListeners();
     }
@@ -145,16 +180,19 @@ class PurchaseStore extends ChangeNotifier {
   Future<bool> restore({
     String entitlementId = AppConfig.proEntitlementId,
   }) async {
-    if (!_configured || _isPurchasing) return false;
+    if (!_configured) throw StateError('Purchases are not configured.');
+    if (_isPurchasing) return false;
     _isPurchasing = true;
+    _isRestoring = true;
     notifyListeners();
     try {
       _applyCustomerInfo(await Purchases.restorePurchases());
       return hasEntitlement(entitlementId);
     } on PlatformException catch (e) {
-      _lastError = e.message ?? PurchasesErrorHelper.getErrorCode(e).name;
+      _recordError('restore', e);
       rethrow;
     } finally {
+      _isRestoring = false;
       _isPurchasing = false;
       notifyListeners();
     }
@@ -182,4 +220,9 @@ class PurchaseStore extends ChangeNotifier {
     }
     super.dispose();
   }
+}
+
+/// Store purchase succeeded, but its access grant has not arrived yet.
+class PurchaseAccessPending implements Exception {
+  const PurchaseAccessPending();
 }

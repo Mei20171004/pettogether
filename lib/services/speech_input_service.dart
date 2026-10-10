@@ -21,9 +21,9 @@ enum SpeechInputState {
 /// of callbacks for the whole process, so recreating it for every dialog would
 /// leave later dialogs listening to callbacks owned by an earlier route.
 class SpeechInputService extends ChangeNotifier {
-  SpeechInputService._();
+  SpeechInputService();
 
-  static final SpeechInputService instance = SpeechInputService._();
+  static final SpeechInputService instance = SpeechInputService();
 
   SpeechToText _speech = SpeechToText();
   SpeechInputState _state = SpeechInputState.idle;
@@ -184,7 +184,9 @@ class SpeechInputService extends ChangeNotifier {
     }
     if (status == SpeechToText.notListeningStatus &&
         _state == SpeechInputState.listening) {
-      _setState(SpeechInputState.stopping);
+      // Some recognizers stop on a pause without ever sending `done`.
+      // Use the same bounded final-result wait as the explicit stop action.
+      unawaited(stop());
       return;
     }
     if (status == SpeechToText.doneStatus) {

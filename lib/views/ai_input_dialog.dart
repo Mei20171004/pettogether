@@ -15,6 +15,7 @@ class AiInputDialog extends StatefulWidget {
     required this.aiParseLimit,
     this.showBalance = true,
     this.speechInput,
+    this.initialText = '',
   });
 
   final AppLanguage language;
@@ -22,6 +23,7 @@ class AiInputDialog extends StatefulWidget {
   final int aiParseLimit;
   final bool showBalance;
   final SpeechInputService? speechInput;
+  final String initialText;
 
   @override
   State<AiInputDialog> createState() => _AiInputDialogState();
@@ -29,7 +31,10 @@ class AiInputDialog extends StatefulWidget {
 
 class _AiInputDialogState extends State<AiInputDialog>
     with WidgetsBindingObserver {
-  final TextEditingController _controller = TextEditingController();
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialText,
+  );
+  late String _lastTranscript = _speech.transcript;
   late final SpeechInputService _speech =
       widget.speechInput ?? SpeechInputService.instance;
 
@@ -60,7 +65,8 @@ class _AiInputDialogState extends State<AiInputDialog>
   void _onSpeechChanged() {
     if (!mounted) return;
     final text = _speech.transcript;
-    if (text != _controller.text) {
+    if (text != _lastTranscript) {
+      _lastTranscript = text;
       _controller.value = TextEditingValue(
         text: text,
         selection: TextSelection.collapsed(offset: text.length),
@@ -87,7 +93,11 @@ class _AiInputDialogState extends State<AiInputDialog>
   }
 
   Future<void> _submit() async {
-    if (_speech.isListening) await _speech.stop();
+    if (_speech.isBusy ||
+        _speech.isListening ||
+        _controller.text.trim().isEmpty) {
+      return;
+    }
     if (!mounted) return;
     Navigator.pop(context, _controller.text);
   }
@@ -96,6 +106,7 @@ class _AiInputDialogState extends State<AiInputDialog>
   Widget build(BuildContext context) {
     final language = widget.language;
     return AlertDialog(
+      scrollable: true,
       title: Text(
         L10n.text(language, 'AI assistant', 'AIアシスタント', 'AI 助手', 'AI 어시스턴트'),
       ),
@@ -118,54 +129,70 @@ class _AiInputDialogState extends State<AiInputDialog>
           ],
           TextField(
             controller: _controller,
-            autofocus: true,
+            autofocus: false,
+            onChanged: (_) => setState(() {}),
             readOnly: _speech.isListening || _speech.isBusy,
             maxLines: 8,
             minLines: 4,
-            decoration:
-                petFieldDecoration(
-                  hintText: L10n.text(
-                    language,
-                    'Type or speak your pet care plan…',
-                    'ペットのケアを入力または音声で話す…',
-                    '输入或说出宠物护理计划…',
-                    '반려동물 케어 계획을 입력하거나 말해 주세요…',
-                  ),
-                ).copyWith(
-                  suffixIcon: IconButton(
-                    key: const ValueKey('ai_voice_input_button'),
-                    tooltip: _speech.isListening
-                        ? L10n.text(
-                            language,
-                            'Stop voice input',
-                            '音声入力を停止',
-                            '停止语音输入',
-                            '음성 입력 중지',
-                          )
-                        : L10n.text(
-                            language,
-                            'Start voice input',
-                            '音声入力を開始',
-                            '开始语音输入',
-                            '음성 입력 시작',
-                          ),
-                    onPressed: _speech.isBusy ? null : _toggleSpeech,
-                    icon: _speech.isBusy
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            _speech.isListening
-                                ? Icons.stop_circle_rounded
-                                : Icons.mic_rounded,
-                            color: _speech.isListening
-                                ? PawColors.rose
-                                : PawColors.purple,
-                          ),
-                  ),
-                ),
+            decoration: petFieldDecoration(
+              hintText: L10n.text(
+                language,
+                'Type or speak your pet care plan…',
+                'ペットのケアを入力または音声で話す…',
+                '输入或说出宠物护理计划…',
+                '반려동물 케어 계획을 입력하거나 말해 주세요…',
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Tooltip(
+            message: L10n.text(
+              language,
+              'Start voice input',
+              '音声入力を開始',
+              '开始语音输入',
+              '음성 입력 시작',
+            ),
+            child: FilledButton.icon(
+              key: const ValueKey('ai_voice_input_button'),
+              onPressed: _speech.isBusy ? null : _toggleSpeech,
+              icon: _speech.isBusy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      _speech.isListening
+                          ? Icons.stop_circle_rounded
+                          : Icons.mic_rounded,
+                    ),
+              label: Text(
+                _speech.isListening
+                    ? L10n.text(
+                        language,
+                        "I'm done speaking",
+                        '話し終わりました',
+                        '我说完了',
+                        '다 말했어요',
+                      )
+                    : _speech.isBusy
+                    ? L10n.text(
+                        language,
+                        'Finishing voice input…',
+                        '音声入力を処理中…',
+                        '正在处理语音…',
+                        '음성을 처리하는 중…',
+                      )
+                    : L10n.text(
+                        language,
+                        'Start voice input',
+                        '音声入力を開始',
+                        '开始语音输入',
+                        '음성 입력 시작',
+                      ),
+              ),
+            ),
           ),
           if (_statusMessage(language) case final message?) ...[
             const SizedBox(height: 8),
@@ -184,12 +211,25 @@ class _AiInputDialogState extends State<AiInputDialog>
       ),
       actions: [
         TextButton(
-          onPressed: _speech.isBusy ? null : _cancelAndClose,
+          onPressed: _cancelAndClose,
           child: Text(L10n.text(language, 'Cancel', 'キャンセル', '取消', '취소')),
         ),
         TextButton(
-          onPressed: _speech.isBusy ? null : _submit,
-          child: Text(L10n.text(language, 'Parse', '解析', '解析', '분석')),
+          onPressed:
+              _speech.isBusy ||
+                  _speech.isListening ||
+                  _controller.text.trim().isEmpty
+              ? null
+              : _submit,
+          child: Text(
+            L10n.text(
+              language,
+              'Generate care plan',
+              'ケアプランを作成',
+              '生成护理计划',
+              '돌봄 계획 만들기',
+            ),
+          ),
         ),
       ],
     );
@@ -197,7 +237,16 @@ class _AiInputDialogState extends State<AiInputDialog>
 
   String? _statusMessage(AppLanguage language) {
     return switch (_speech.state) {
-      SpeechInputState.idle => null,
+      SpeechInputState.idle =>
+        _lastTranscript.isEmpty
+            ? null
+            : L10n.text(
+                language,
+                'Voice input finished. Check the text, then generate your care plan.',
+                '音声入力が終了しました。文章を確認し、ケアプランを作成してください。',
+                '语音录入已结束，请检查文字，再点击“生成护理计划”。',
+                '음성 입력이 끝났습니다. 내용을 확인하고 돌봄 계획을 만들어 주세요.',
+              ),
       SpeechInputState.initializing => L10n.text(
         language,
         'Preparing voice input…',
@@ -207,9 +256,9 @@ class _AiInputDialogState extends State<AiInputDialog>
       ),
       SpeechInputState.listening => L10n.text(
         language,
-        'Listening… Tap the stop button when finished.',
-        '聞き取り中…終わったら停止ボタンを押してください。',
-        '正在聆听…说完后请点击停止按钮。',
+        "Listening… Tap “I'm done speaking” when finished.",
+        '聞き取り中…終わったら「話し終わりました」を押してください。',
+        '正在聆听…说完后请点击“我说完了”。',
         '듣고 있습니다…완료되면 중지 버튼을 눌러 주세요.',
       ),
       SpeechInputState.stopping => L10n.text(

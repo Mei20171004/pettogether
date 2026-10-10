@@ -664,10 +664,10 @@ class ManageHouseholdView extends StatelessWidget {
         feature: ProFeature.multiPet,
         reason: L10n.text(
           language,
-          'Your first pet is free. Adding a second pet requires the ¥300/month multi-pet plan.',
-          '1匹目は無料です。2匹目の追加には月額300円の複数ペットプランが必要です。',
-          '第 1 只宠物免费；添加第 2 只需要订阅每月 ¥300 的多宠物功能。',
-          '첫 반려동물은 무료이며, 두 번째 반려동물부터 월 ¥300 구독이 필요합니다.',
+          'Your first pet is free. Adding a second pet requires the multi-pet subscription.',
+          '1匹目は無料です。2匹目の追加には複数ペットプランが必要です。',
+          '第 1 只宠物免费；添加第 2 只需要订阅多宠物功能。',
+          '첫 반려동물은 무료이며, 두 번째 반려동물부터 구독이 필요합니다.',
         ),
       );
       return;

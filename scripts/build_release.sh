@@ -11,9 +11,18 @@ if [ ! -f "$KEY_FILE" ]; then
   exit 1
 fi
 
-if ! grep -q '"appl_' "$KEY_FILE"; then
-  echo "✗ $KEY_FILE 里还没有填入真正的 Key。"
-  echo "  请打开这个文件，把占位文字换成 RevenueCat 里以 appl_ 开头的那串，然后再运行一次。"
+# Validate the exact iOS field, without printing credentials.
+if ! python3 - "$KEY_FILE" <<'PYCONFIG'
+import json, sys
+try:
+    key = json.load(open(sys.argv[1])).get('REVENUECAT_IOS_KEY', '')
+    valid = isinstance(key, str) and key.startswith('appl_') and len(key) > 5
+except (OSError, ValueError):
+    valid = False
+sys.exit(0 if valid else 1)
+PYCONFIG
+then
+  echo "✗ RevenueCat iOS 配置缺失或无效，请检查本地配置后再构建。"
   exit 1
 fi
 

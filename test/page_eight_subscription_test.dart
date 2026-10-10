@@ -34,31 +34,32 @@ void main() {
     );
   }
 
-  testWidgets('multi-pet paywall explains the free first pet and ¥300 price', (
-    tester,
-  ) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    try {
-      await tester.pumpWidget(paywall(ProFeature.multiPet));
-      await tester.pumpAndSettle();
+  testWidgets(
+    'multi-pet paywall explains the free first pet without a fixed price',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        await tester.pumpWidget(paywall(ProFeature.multiPet));
+        await tester.pumpAndSettle();
 
-      expect(find.text('更多宠物'), findsWidgets);
-      expect(find.textContaining('第 1 只宠物免费'), findsOneWidget);
-      expect(find.text('¥300 / 月'), findsOneWidget);
-      expect(find.text('Free coupon'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.textContaining('同时使用时合计 ¥600/月'),
-        180,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(find.textContaining('同时使用时合计 ¥600/月'), findsOneWidget);
-      expect(find.text('医疗记录照片'), findsNothing);
-    } finally {
-      debugDefaultTargetPlatformOverride = null;
-    }
-  });
+        expect(find.text('更多宠物'), findsWidgets);
+        expect(find.textContaining('第 1 只宠物免费'), findsOneWidget);
+        expect(find.textContaining('¥300'), findsNothing);
+        expect(find.text('Free coupon'), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.text('AI 护理录入和多宠物功能为独立订阅。'),
+          180,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.text('AI 护理录入和多宠物功能为独立订阅。'), findsOneWidget);
+        expect(find.text('医疗记录照片'), findsNothing);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
 
-  testWidgets('AI paywall is separate and costs ¥300 per month', (
+  testWidgets('AI paywall stays separate without inventing a store price', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -67,14 +68,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('AI 护理录入'), findsWidgets);
-      expect(find.textContaining('每月 ¥300'), findsOneWidget);
-      expect(find.text('¥300 / 月'), findsOneWidget);
+      expect(find.text('用一句话生成宠物护理日程。'), findsOneWidget);
+      expect(find.textContaining('¥300'), findsNothing);
       await tester.scrollUntilVisible(
-        find.textContaining('同时使用时合计 ¥600/月'),
+        find.text('AI 护理录入和多宠物功能为独立订阅。'),
         180,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(find.textContaining('同时使用时合计 ¥600/月'), findsOneWidget);
+      expect(find.text('AI 护理录入和多宠物功能为独立订阅。'), findsOneWidget);
+      expect(find.textContaining('¥600'), findsNothing);
       expect(find.text('第 2 只及更多宠物'), findsNothing);
     } finally {
       debugDefaultTargetPlatformOverride = null;

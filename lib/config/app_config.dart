@@ -20,7 +20,9 @@ abstract final class AppConfig {
 
   /// RevenueCat Test Store key. Debug and profile builds only: the Test Store
   /// serves offerings and accepts purchases without any App Store product.
-  static const String revenueCatTestKey = 'test_fHYSeznSzgNjiuhggsTEJiEvtxF';
+  static const String revenueCatTestKey = String.fromEnvironment(
+    'REVENUECAT_TEST_KEY',
+  );
 
   /// Production public SDK keys, injected at build time so a release build
   /// never depends on someone remembering to edit this file:
@@ -53,12 +55,11 @@ abstract final class AppConfig {
   /// `test_` key, so a release build either gets a real store key or the SDK is
   /// left unconfigured and every paid feature simply stays locked.
   static String? resolveRevenueCatKey({required bool isIOS}) {
-    if (kReleaseMode) {
-      final key = isIOS ? revenueCatIosKey : revenueCatAndroidKey;
-      if (key.isEmpty || key.startsWith('test_')) return null;
-      return key;
-    }
-    return revenueCatTestKey.isEmpty ? null : revenueCatTestKey;
+    final key = isIOS ? revenueCatIosKey : revenueCatAndroidKey;
+    final prefix = isIOS ? 'appl_' : 'goog_';
+    if (key.startsWith(prefix)) return key;
+    if (kReleaseMode) return null;
+    return revenueCatTestKey.startsWith('test_') ? revenueCatTestKey : null;
   }
 }
 

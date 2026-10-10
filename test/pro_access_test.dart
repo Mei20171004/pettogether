@@ -287,12 +287,9 @@ void main() {
   });
 
   group('AppConfig.resolveRevenueCatKey', () {
-    test('hands debug builds the Test Store key', () {
-      // Tests run in debug mode, which is the branch that must never reach a
-      // release build: RevenueCat terminates a release build on a test_ key.
-      final key = AppConfig.resolveRevenueCatKey(isIOS: true);
-      expect(key, isNotNull);
-      expect(key, startsWith('test_'));
+    test('a debug build without supplied credentials cannot silently use Test Store', () {
+      expect(AppConfig.resolveRevenueCatKey(isIOS: true), isNull);
+      expect(AppConfig.resolveRevenueCatKey(isIOS: false), isNull);
     });
 
     test('uses separate products and entitlements for each add-on', () {
