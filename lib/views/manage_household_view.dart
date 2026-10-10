@@ -670,7 +670,7 @@ class ManageHouseholdView extends StatelessWidget {
           '첫 반려동물은 무료이며, 두 번째 반려동물부터 구독이 필요합니다.',
         ),
       );
-      return;
+      if (!context.mounted || !context.read<ProAccess>().canAddPet) return;
     }
     final name = TextEditingController(text: pet?.name ?? '');
     final age = TextEditingController(text: pet?.ageYears?.toString() ?? '');
@@ -678,12 +678,19 @@ class ManageHouseholdView extends StatelessWidget {
         TextEditingController(text: pet?.weightKg?.toString() ?? '');
     final habits = TextEditingController(text: pet?.habits ?? '');
     var type = pet?.type ?? PetType.cat;
+    var isSaving = false;
+    String? nameError;
+    String? saveError;
+    ModalRoute<void>? dialogRoute;
 
-    final saved = await showDialog<bool>(
+    await showDialog<void>(
       context: context,
       builder: (dialogContext) {
+        dialogRoute = ModalRoute.of<void>(dialogContext);
         return StatefulBuilder(
-          builder: (context, setState) => AlertDialog(
+          builder: (context, setState) => PopScope(
+            canPop: !isSaving,
+            child: AlertDialog(
             title: Text(L10n.text(
               language,
               pet == null ? 'Add pet' : 'Edit pet',
@@ -696,12 +703,14 @@ class ManageHouseholdView extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
+                    key: const ValueKey('family-pet-name'),
                     controller: name,
+                    enabled: !isSaving,
                     autofocus: true,
                     decoration: petFieldDecoration(
-                      hintText: L10n.text(language, 'Pet name', 'ペットの名前',
-                          '宠物名字', '반려동물 이름'),
-                    ),
+                      hintText: L10n.text(language, 'Pet name · Required', 'ペットの名前・必須',
+                          '宠物名字 · 必填', '반려동물 이름 · 필수'),
+                    ).copyWith(errorText: nameError),
                   ),
                   const SizedBox(height: 12),
                   Wrap(
@@ -714,13 +723,14 @@ class ManageHouseholdView extends StatelessWidget {
                               style: const TextStyle(fontSize: 16)),
                           label: Text(petTypeName(language, t)),
                           selected: type == t,
-                          onSelected: (_) => setState(() => type = t),
+                          onSelected: isSaving ? null : (_) => setState(() => type = t),
                         ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: age,
+                    enabled: !isSaving,
                     keyboardType: TextInputType.number,
                     decoration: petFieldDecoration(
                       hintText: L10n.text(language, 'Age (years)', '年齢（歳）',
@@ -730,6 +740,7 @@ class ManageHouseholdView extends StatelessWidget {
                   const SizedBox(height: 12),
                   TextField(
                     controller: weight,
+                    enabled: !isSaving,
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                     decoration: petFieldDecoration(
@@ -740,55 +751,110 @@ class ManageHouseholdView extends StatelessWidget {
                   const SizedBox(height: 12),
                   TextField(
                     controller: habits,
+                    enabled: !isSaving,
                     decoration: petFieldDecoration(
                       hintText: L10n.text(language, 'Habits & notes', '習性・メモ',
                           '习性和备注', '습성 및 메모'),
                     ),
                   ),
+                  if (saveError != null) ...[
+                    const SizedBox(height: 12),
+                    Text(saveError!, style: const TextStyle(color: PawColors.rose)),
+                  ],
                 ],
               ),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
+                onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
                 child: Text(
                     L10n.text(language, 'Cancel', 'キャンセル', '取消', '취소')),
               ),
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
+                onPressed: isSaving
+                    ? null
+                    : () async {
+                        if (isSaving) return;
+                        FocusScope.of(dialogContext).unfocus();
+                        final trimmedName = name.text.trim();
+                        if (trimmedName.isEmpty) {
+                          setState(
+                            () => nameError = L10n.text(
+                              language,
+                              'Enter a pet name.',
+                              'ペットの名前を入力してください。',
+                              '请输入宠物名字。',
+                              '반려동물 이름을 입력하세요.',
+                            ),
+                          );
+                          return;
+                        }
+                        setState(() {
+                          nameError = null;
+                          saveError = null;
+                          isSaving = true;
+                        });
+                        final ageYears = int.tryParse(age.text.trim());
+                        final weightKg = double.tryParse(weight.text.trim());
+                        final trimmedHabits = habits.text.trim();
+                        final saved = pet == null
+                            ? await store.addPet(
+                                name: trimmedName,
+                                type: type,
+                                ageYears: ageYears,
+                                habits: trimmedHabits.isEmpty
+                                    ? null
+                                    : trimmedHabits,
+                                weightKg: weightKg,
+                              )
+                            : await store.updatePet(
+                                pet.copyWith(
+                                  name: trimmedName,
+                                  type: type,
+                                  ageYears: ageYears,
+                                  habits: trimmedHabits.isEmpty
+                                      ? null
+                                      : trimmedHabits,
+                                  weightKg: weightKg,
+                                ),
+                              );
+                        if (!dialogContext.mounted) return;
+                        if (saved) {
+                          Navigator.pop(dialogContext);
+                        } else {
+                          setState(() {
+                            isSaving = false;
+                            saveError = L10n.text(
+                              language,
+                              'Could not save. Your entries are kept; please retry.',
+                              '保存できませんでした。入力は保持されています。再試行してください。',
+                              '保存失败，输入已保留，请重试。',
+                              '저장하지 못했습니다. 입력은 유지됩니다. 다시 시도해 주세요.',
+                            );
+                            if (store.errorMessage != null) {
+                              saveError = '$saveError\n${store.errorMessage}';
+                            }
+                          });
+                        }
+                      },
                 child: Text(L10n.text(
-                    language, 'Save', '保存', '保存', '저장')),
+                    language, isSaving ? 'Saving…' : 'Save',
+                    isSaving ? '保存中…' : '保存',
+                    isSaving ? '正在保存…' : '保存',
+                    isSaving ? '저장 중…' : '저장')),
               ),
             ],
+            ),
           ),
         );
       },
     );
 
-    if (saved != true) return;
-    final trimmedName = name.text.trim();
-    if (trimmedName.isEmpty) return;
-    final ageYears = int.tryParse(age.text.trim());
-    final weightKg = double.tryParse(weight.text.trim());
-    final trimmedHabits = habits.text.trim();
-
-    if (pet == null) {
-      await store.addPet(
-        name: trimmedName,
-        type: type,
-        ageYears: ageYears,
-        habits: trimmedHabits.isEmpty ? null : trimmedHabits,
-        weightKg: weightKg,
-      );
-    } else {
-      await store.updatePet(pet.copyWith(
-        name: trimmedName,
-        type: type,
-        ageYears: ageYears,
-        habits: trimmedHabits.isEmpty ? null : trimmedHabits,
-        weightKg: weightKg,
-      ));
-    }
+    await dialogRoute?.completed;
+    name.dispose();
+    age.dispose();
+    weight.dispose();
+    habits.dispose();
   }
 
   // -------------------------------------------------------------------------
