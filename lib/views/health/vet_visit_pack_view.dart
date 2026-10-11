@@ -27,6 +27,7 @@ class VetVisitPackView extends StatefulWidget {
 class _VetVisitPackViewState extends State<VetVisitPackView> {
   int _rangeDays = 30;
   bool _exporting = false;
+  final _shareButtonKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
@@ -83,6 +84,7 @@ class _VetVisitPackViewState extends State<VetVisitPackView> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
                   child: ElevatedButton.icon(
+                    key: _shareButtonKey,
                     style: pawPrimaryButtonStyle(),
                     onPressed:
                         _exporting ? null : () => _export(pack, language),
@@ -278,11 +280,17 @@ class _VetVisitPackViewState extends State<VetVisitPackView> {
           '진료 패키지 PDF 내보내기는 Pro 기능입니다.',
         ),
       );
-      return;
+      if (!mounted || !context.read<ProAccess>().canExportVetPack) return;
     }
+    final box = _shareButtonKey.currentContext!.findRenderObject() as RenderBox;
+    final shareOrigin = box.localToGlobal(Offset.zero) & box.size;
     setState(() => _exporting = true);
     try {
-      await VetReportPdf.share(pack: pack, language: language);
+      await VetReportPdf.share(
+        pack: pack,
+        language: language,
+        sharePositionOrigin: shareOrigin,
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

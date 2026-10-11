@@ -59,7 +59,8 @@ class MedicationDetailsController extends ChangeNotifier {
     this.endDate,
     this.ongoing = false,
   }) : startDate = startOfDay(startDate ?? DateTime.now()) {
-    nameController = TextEditingController(text: name);
+    nameController = TextEditingController(text: name)
+      ..addListener(notifyListeners);
     purposeController = TextEditingController(text: purpose ?? '');
     sideEffectsController = TextEditingController(text: sideEffects ?? '');
     remainingController =

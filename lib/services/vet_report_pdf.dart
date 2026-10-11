@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' show Rect;
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
@@ -15,10 +16,12 @@ import '../models/vet_visit_pack.dart';
 /// wherever the owner sends it.
 abstract final class VetReportPdf {
   static const _fontAsset = 'assets/fonts/NotoSansJP-VF.ttf';
+  static const _chineseFontAsset = 'assets/fonts/NotoSansSC-VF.ttf';
 
   static Future<void> share({
     required VetVisitPack pack,
     required AppLanguage language,
+    required Rect sharePositionOrigin,
   }) async {
     final bytes = await render(pack: pack, language: language);
     final safeName = pack.pet.name.replaceAll(RegExp(r'[^\w\-]'), '_');
@@ -34,6 +37,8 @@ abstract final class VetReportPdf {
           ),
         ],
         subject: '${pack.pet.name} — pettogether',
+        sharePositionOrigin: sharePositionOrigin,
+        fileNameOverrides: ['pettogether-$safeName-$stamp.pdf'],
       ),
     );
   }
@@ -42,12 +47,11 @@ abstract final class VetReportPdf {
     required VetVisitPack pack,
     required AppLanguage language,
   }) async {
-    // Noto Sans JP carries Latin, kana and the Han characters the Japanese and
-    // Chinese labels need. It has no Hangul, so Korean falls back to English
-    // rather than printing rows of empty boxes.
+    // Use Simplified Chinese glyphs for Chinese; Korean keeps the English fallback.
     final effective =
         language == AppLanguage.korean ? AppLanguage.english : language;
-    final fontData = await rootBundle.load(_fontAsset);
+    final fontData = await rootBundle.load(
+        language == AppLanguage.chinese ? _chineseFontAsset : _fontAsset);
     final font = pw.Font.ttf(fontData);
     final theme = pw.ThemeData.withFont(base: font, bold: font);
 

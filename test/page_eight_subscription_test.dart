@@ -47,11 +47,11 @@ void main() {
         expect(find.textContaining('¥300'), findsNothing);
         expect(find.text('Free coupon'), findsOneWidget);
         await tester.scrollUntilVisible(
-          find.text('AI 护理录入和多宠物功能为独立订阅。'),
+          find.text('健康 Pro、AI 护理录入和多宠物是三个独立订阅。'),
           180,
           scrollable: find.byType(Scrollable).first,
         );
-        expect(find.text('AI 护理录入和多宠物功能为独立订阅。'), findsOneWidget);
+        expect(find.text('健康 Pro、AI 护理录入和多宠物是三个独立订阅。'), findsOneWidget);
         expect(find.text('医疗记录照片'), findsNothing);
       } finally {
         debugDefaultTargetPlatformOverride = null;
@@ -71,11 +71,11 @@ void main() {
       expect(find.text('用一句话生成宠物护理日程。'), findsOneWidget);
       expect(find.textContaining('¥300'), findsNothing);
       await tester.scrollUntilVisible(
-        find.text('AI 护理录入和多宠物功能为独立订阅。'),
+        find.text('健康 Pro、AI 护理录入和多宠物是三个独立订阅。'),
         180,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(find.text('AI 护理录入和多宠物功能为独立订阅。'), findsOneWidget);
+      expect(find.text('健康 Pro、AI 护理录入和多宠物是三个独立订阅。'), findsOneWidget);
       expect(find.textContaining('¥600'), findsNothing);
       expect(find.text('第 2 只及更多宠物'), findsNothing);
     } finally {

@@ -21,6 +21,7 @@ const {
   deleteAccountData,
 } = require("./account_deletion");
 const crypto = require("crypto");
+const { syncPurchases } = require("./purchase_sync");
 
 initializeApp();
 
@@ -85,6 +86,7 @@ const invalidTokenErrors = new Set([
 /// of every webhook call. Set it with
 /// `firebase functions:secrets:set REVENUECAT_WEBHOOK_SECRET`.
 const revenuecatWebhookSecret = defineSecret("REVENUECAT_WEBHOOK_SECRET");
+const revenuecatReadKey = defineSecret("REVENUECAT_PURCHASES_READ_KEY");
 
 const proEntitlementId = "pet_together_pro";
 const multiPetEntitlementId = "pet_together_multi_pet";
@@ -94,40 +96,6 @@ const supportedEntitlementIds = new Set([
   multiPetEntitlementId,
   aiEntitlementId,
 ]);
-const productEntitlementIds = new Map([
-  ["pettogether_pro_monthly", proEntitlementId],
-  ["pettogether_pro_yearly", proEntitlementId],
-  ["pettogether_multi_pet_monthly", multiPetEntitlementId],
-  ["pettogether_ai_monthly", aiEntitlementId],
-]);
-
-/// Event types that grant access. `expiration_at_ms`, when present, still has
-/// to be in the future.
-const grantingEventTypes = new Set([
-  "INITIAL_PURCHASE",
-  "RENEWAL",
-  "PRODUCT_CHANGE",
-  "UNCANCELLATION",
-  "NON_RENEWING_PURCHASE",
-  "SUBSCRIPTION_EXTENDED",
-  "TEMPORARY_ENTITLEMENT_GRANT",
-]);
-
-/// Event types that revoke access — but only once the paid period is over.
-/// CANCELLATION means "will not renew", not "lost access now".
-const revokingEventTypes = new Set([
-  "CANCELLATION",
-  "EXPIRATION",
-  "SUBSCRIPTION_PAUSED",
-  "REFUND",
-  "BILLING_ISSUE",
-]);
-
-/// Deliberately ignored: TRANSFER moves an entitlement between anonymous ids
-/// (both sides are recomputed by the RENEWAL/EXPIRATION that follows) and TEST
-/// is the dashboard's "send test event" button.
-const ignoredEventTypes = new Set(["TRANSFER", "TEST"]);
-
 exports.notifyTaskChange = onDocumentWritten(
   {
     document: "households/{householdId}/tasks/{taskId}",
@@ -320,7 +288,7 @@ exports.sendHealthDueReminders = onSchedule(
 ///   * RevenueCat POSTs `{ "event": { ... } }` with the shared secret in the
 ///     `Authorization` header. `event.app_user_id` is the Firebase uid, which
 ///     the client sets via `Purchases.logIn(uid)`.
-///   * This function is the ONLY writer of `entitlements/{uid}` and of
+///   * The verified server paths are the only writers of `entitlements/{uid}` and of
 ///     `households/{householdId}/private/pro`; Security Rules deny both to
 ///     every client, so purchase state can never be forged from the app.
 ///   * `entitlements/{uid}` is the per-user truth. The household mirror is
@@ -331,11 +299,11 @@ exports.sendHealthDueReminders = onSchedule(
 ///     to scripts/backfill_legacy_pro.js and must survive every webhook write.
 ///
 /// Anything we deliberately skip answers 200 so RevenueCat stops retrying it;
-/// only a failed Firestore write answers 500 and earns a retry.
+/// provider or Firestore failures answer 500 and earn a retry.
 exports.revenuecatWebhook = onRequest(
   {
     region,
-    secrets: [revenuecatWebhookSecret],
+    secrets: [revenuecatWebhookSecret, revenuecatReadKey],
     maxInstances: 10,
     cors: false,
     // RevenueCat calls this from its own servers, so Google's IAM check has to
@@ -362,98 +330,37 @@ exports.revenuecatWebhook = onRequest(
     }
 
     const eventType = typeof event.type === "string" ? event.type : "";
-    const uid = typeof event.app_user_id === "string" ? event.app_user_id.trim() : "";
-    if (uid.length === 0) {
-      logger.warn("RevenueCat webhook ignored: missing app_user_id", { eventType });
+    if (eventType === "TEST") {
       response.status(200).send("ignored");
       return;
     }
-    // An anonymous id means the purchase happened before the app called
-    // Purchases.logIn(uid). The TRANSFER/RENEWAL that follows the login
-    // carries the real uid, so there is nothing to store yet.
-    if (uid.startsWith("$RCAnonymousID:")) {
-      logger.info("RevenueCat webhook ignored: anonymous app_user_id", { eventType });
-      response.status(200).send("ignored");
-      return;
-    }
-    if (ignoredEventTypes.has(eventType)) {
-      logger.info("RevenueCat webhook ignored by type", { eventType, uid });
-      response.status(200).send("ignored");
-      return;
-    }
+    const candidates = [event.app_user_id, ...(Array.isArray(event.aliases) ? event.aliases : []),
+      ...(Array.isArray(event.transferred_from) ? event.transferred_from : []),
+      ...(Array.isArray(event.transferred_to) ? event.transferred_to : [])];
+    const uids = [...new Set(candidates.filter((id) =>
+      typeof id === "string" && id.length > 0 && id.length <= 128 && !id.startsWith("$RCAnonymousID:")))];
     try {
-      await getAuth().getUser(uid);
-    } catch (error) {
-      if (error.code === "auth/user-not-found") {
-        await db.collection("entitlements").doc(uid).delete();
-        logger.info("RevenueCat webhook ignored for deleted account", { uid });
-        response.status(200).send("ignored");
-        return;
+      let synced = 0;
+      for (const uid of uids) {
+        try {
+          await getAuth().getUser(uid);
+        } catch (error) {
+          if (error.code !== "auth/user-not-found") throw error;
+          continue;
+        }
+        await verifyPurchaseAccess(uid);
+        synced++;
       }
-      throw error;
-    }
-
-    const entitlementIds = Array.isArray(event.entitlement_ids)
-      ? event.entitlement_ids.filter((id) => typeof id === "string")
-      : null;
-    const productId = typeof event.product_id === "string" ? event.product_id : null;
-    const entitlementId = productEntitlementIds.get(productId) ||
-      entitlementIds?.find((id) => supportedEntitlementIds.has(id)) || null;
-    if (entitlementId === null) {
-      logger.info("RevenueCat webhook ignored: unsupported entitlement", {
-        eventType,
-        uid,
-        entitlementIds,
+      logger.info("RevenueCat current entitlements synchronized", {
+        eventType, eventId: event.id || null, accounts: synced,
       });
-      response.status(200).send("ignored");
-      return;
-    }
-
-    const expiresAt = expirationTimestamp(event.expiration_at_ms);
-    const active = entitlementActive(eventType, expiresAt);
-    if (active === null) {
-      logger.info("RevenueCat webhook ignored: unhandled type", { eventType, uid });
-      response.status(200).send("ignored");
-      return;
-    }
-
-    try {
-      const entitlement = {
-        active,
-        expiresAt,
-        productId,
-        store: typeof event.store === "string" ? event.store : null,
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-      const update = {
-        entitlements: { [entitlementId]: entitlement },
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-      // Keep the existing health-Pro fields during the migration so deployed
-      // clients and Security Rules continue to recognize that entitlement.
-      if (entitlementId === proEntitlementId) {
-        Object.assign(update, entitlement);
-      }
-      await db.collection("entitlements").doc(uid).set(
-        update,
-        { merge: true },
-      );
-      const households = await recomputeHouseholdsForMember(uid);
-      logger.info("RevenueCat entitlement stored", {
-        eventType,
-        uid,
-        active,
-        entitlementId,
-        households,
-      });
-      response.status(200).send("ok");
+      response.status(200).send(synced ? "ok" : "ignored");
     } catch (error) {
-      logger.error("RevenueCat webhook write failed", {
-        eventType,
-        uid,
-        message: error.message,
+      logger.error("RevenueCat subscription sync failed", {
+        eventType, eventId: event.id || null, code: error.code || "server",
+        status: error.status || null,
       });
-      response.status(500).send("Internal Server Error");
+      response.status(500).send("Subscription sync failed");
     }
   },
 );
@@ -488,10 +395,26 @@ function webhookEvent(body) {
   return event && typeof event === "object" ? event : null;
 }
 
-function expirationTimestamp(value) {
-  const millis = Number(value);
-  if (!Number.isFinite(millis) || millis <= 0) return null;
-  return Timestamp.fromMillis(millis);
+exports.syncPurchaseEntitlements = onCall(
+  { region, maxInstances: 5, enforceAppCheck: true, secrets: [revenuecatReadKey] },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in to synchronize purchases.");
+    try {
+      await verifyPurchaseAccess(uid);
+      return { synced: true };
+    } catch (error) {
+      logger.error("Purchase access verification failed", {
+        uid, code: error.code || "server", status: error.status || null,
+      });
+      throw new HttpsError("unavailable", "Subscription verification failed. Please retry.");
+    }
+  },
+);
+
+async function verifyPurchaseAccess(uid) {
+  await syncPurchases({ uid, key: revenuecatReadKey.value(), db, Timestamp, FieldValue });
+  await recomputeHouseholdsForMember(uid);
 }
 
 async function deleteRevenueCatCustomer(uid) {
@@ -507,16 +430,6 @@ async function deleteRevenueCatCustomer(uid) {
   if (response.status !== 200 && response.status !== 404) {
     throw new Error(`RevenueCat customer deletion failed with ${response.status}.`);
   }
-}
-
-/// true = grant, false = revoke, null = an event type we do not act on.
-function entitlementActive(eventType, expiresAt) {
-  const expired = expiresAt !== null && expiresAt.toMillis() <= Date.now();
-  if (grantingEventTypes.has(eventType)) return !expired;
-  // A cancellation or billing issue leaves the paid period intact; access
-  // only ends once that period has passed.
-  if (revokingEventTypes.has(eventType)) return !expired && expiresAt !== null;
-  return null;
 }
 
 /// Recomputes the Pro mirror of every household the user belongs to and
@@ -536,76 +449,79 @@ async function recomputeHouseholdsForMember(uid) {
 
 /// Mirrors health Pro and both add-ons for every member of the household.
 async function recomputeHouseholdPro(householdReference) {
-  const members = await householdReference.collection("members").get();
-  const memberIds = [];
-  for (const member of members.docs) {
-    const id = typeof member.data().id === "string" && member.data().id.length > 0
-      ? member.data().id
-      : member.id;
-    if (!memberIds.includes(id)) memberIds.push(id);
-  }
+  await db.runTransaction(async (transaction) => {
+    const members = await transaction.get(householdReference.collection("members"));
+    const memberIds = [];
+    for (const member of members.docs) {
+      const id = typeof member.data().id === "string" && member.data().id.length > 0
+        ? member.data().id
+        : member.id;
+      if (!memberIds.includes(id)) memberIds.push(id);
+    }
 
-  const states = new Map(
-    [...supportedEntitlementIds].map((id) => [id, {
-      active: false,
-      sponsorUid: null,
-      expiresAt: null,
-      unbounded: false,
-    }]),
-  );
-
-  for (const group of chunks(memberIds, 300)) {
-    if (group.length === 0) continue;
-    const entitlements = await db.getAll(
-      ...group.map((id) => db.collection("entitlements").doc(id)),
+    const states = new Map(
+      [...supportedEntitlementIds].map((id) => [id, {
+        active: false,
+        sponsorUid: null,
+        expiresAt: null,
+        unbounded: false,
+      }]),
     );
-    for (const entitlement of entitlements) {
-      if (!entitlement.exists) continue;
-      const data = entitlement.data();
-      for (const entitlementId of supportedEntitlementIds) {
-        const record = data.entitlements?.[entitlementId] ||
-          (entitlementId === proEntitlementId ? data : null);
-        if (record?.active !== true) continue;
-        const state = states.get(entitlementId);
-        if (!state.active) {
-          state.active = true;
-          state.sponsorUid = entitlement.id;
-        }
-        const memberExpiry = record.expiresAt || null;
-        if (!memberExpiry) {
-          state.unbounded = true;
-        } else if (!state.unbounded &&
-            (state.expiresAt === null ||
-             memberExpiry.toMillis() > state.expiresAt.toMillis())) {
-          state.expiresAt = memberExpiry;
+
+    for (const group of chunks(memberIds, 300)) {
+      if (group.length === 0) continue;
+      const entitlements = await transaction.getAll(
+        ...group.map((id) => db.collection("entitlements").doc(id)),
+      );
+      for (const entitlement of entitlements) {
+        if (!entitlement.exists) continue;
+        const data = entitlement.data();
+        for (const entitlementId of supportedEntitlementIds) {
+          const record = data.entitlements?.[entitlementId] ||
+            (entitlementId === proEntitlementId ? data : null);
+          if (record?.active !== true ||
+              record.expiresAt && record.expiresAt.toMillis() <= Date.now()) continue;
+          const state = states.get(entitlementId);
+          if (!state.active) {
+            state.active = true;
+            state.sponsorUid = entitlement.id;
+          }
+          const memberExpiry = record.expiresAt || null;
+          if (!memberExpiry) {
+            state.unbounded = true;
+          } else if (!state.unbounded &&
+              (state.expiresAt === null ||
+               memberExpiry.toMillis() > state.expiresAt.toMillis())) {
+            state.expiresAt = memberExpiry;
+          }
         }
       }
     }
-  }
-  for (const state of states.values()) {
-    if (state.unbounded) state.expiresAt = null;
-  }
+    for (const state of states.values()) {
+      if (state.unbounded) state.expiresAt = null;
+    }
 
-  const health = states.get(proEntitlementId);
-  const multiPet = states.get(multiPetEntitlementId);
-  const ai = states.get(aiEntitlementId);
+    const health = states.get(proEntitlementId);
+    const multiPet = states.get(multiPetEntitlementId);
+    const ai = states.get(aiEntitlementId);
 
-  // Merge: `legacy` is owned by scripts/backfill_legacy_pro.js.
-  await householdReference.collection("private").doc("pro").set(
-    {
-      active: health.active,
-      sponsorUid: health.sponsorUid,
-      expiresAt: health.expiresAt,
-      multiPetActive: multiPet.active,
-      multiPetSponsorUid: multiPet.sponsorUid,
-      multiPetExpiresAt: multiPet.expiresAt,
-      aiActive: ai.active,
-      aiSponsorUid: ai.sponsorUid,
-      aiExpiresAt: ai.expiresAt,
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
+    // Merge: `legacy` is owned by scripts/backfill_legacy_pro.js.
+    transaction.set(householdReference.collection("private").doc("pro"),
+      {
+        active: health.active,
+        sponsorUid: health.sponsorUid,
+        expiresAt: health.expiresAt,
+        multiPetActive: multiPet.active,
+        multiPetSponsorUid: multiPet.sponsorUid,
+        multiPetExpiresAt: multiPet.expiresAt,
+        aiActive: ai.active,
+        aiSponsorUid: ai.sponsorUid,
+        aiExpiresAt: ai.expiresAt,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+  });
 }
 
 function taskNotification(before, after) {

@@ -881,8 +881,8 @@ class ManageHouseholdView extends StatelessWidget {
             ),
           ),
           subtitle: Text(
-            L10n.text(language, 'Smart reminders, insights and more',
-                'スマート通知、洞察など', '智能提醒、洞察等', '스마트 알림, 인사이트 등'),
+            L10n.text(language, 'Medical photos, vet PDF and multiple courses',
+                '医療写真・受診PDF・複数の投薬コース', '医疗照片、就诊 PDF、多个用药疗程', '진료 사진, 진료 PDF, 여러 투약 코스'),
             style: const TextStyle(fontSize: 12, color: PawColors.muted),
           ),
           trailing: const Icon(Icons.chevron_right, color: PawColors.purple),

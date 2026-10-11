@@ -51,6 +51,10 @@ class ProAccess extends ChangeNotifier {
   StreamSubscription<HouseholdPro>? _proSubscription;
   StreamSubscription<AiUsage>? _usageSubscription;
   String _lastSignature = '';
+  int _purchaseSyncs = 0;
+  bool _disposed = false;
+
+  bool get isSyncingPurchases => _purchaseSyncs > 0;
 
   static String? _firebaseUid() {
     try {
@@ -72,7 +76,9 @@ class ProAccess extends ChangeNotifier {
       isFreeCouponActive ? _couponExpiresAt : null;
 
   bool get isPro =>
-      isFreeCouponActive || _purchases.isPro || _householdPro.unlocked;
+      isFreeCouponActive ||
+      (_entitlements == null && _purchases.isPro) ||
+      _householdPro.unlocked;
 
   /// True when access comes from the pre-launch grandfather flag rather than a
   /// live subscription. Useful for copy: these users are not "subscribers".
@@ -85,11 +91,13 @@ class ProAccess extends ChangeNotifier {
 
   bool get hasMultiPet =>
       isFreeCouponActive ||
-      _purchases.hasMultiPet ||
+      (_entitlements == null && _purchases.hasMultiPet) ||
       _householdPro.multiPetActiveNow;
 
   bool get hasAi =>
-      isFreeCouponActive || _purchases.hasAi || _householdPro.aiActiveNow;
+      isFreeCouponActive ||
+      (_entitlements == null && _purchases.hasAi) ||
+      _householdPro.aiActiveNow;
 
   int get aiParseLimit =>
       hasAi ? ProLimits.proAiParsesPerMonth : ProLimits.freeAiParsesPerMonth;
@@ -185,28 +193,30 @@ class ProAccess extends ChangeNotifier {
     }
   }
 
-  /// A purchase may reach RevenueCat before its existing entitlement webhook
-  /// reaches Firestore. Retry briefly, then the next app launch rechecks it.
-  Future<void> syncUserInfoAfterPurchase() async {
+  /// Repairs missed webhooks on purchase, restore, launch, and resume.
+  Future<void> refreshPurchases() async {
     final uid = _currentUid();
     final service = _entitlements;
+    final householdId = _householdId;
     if (uid == null || service == null) return;
-    for (final delay in [
-      Duration.zero,
-      const Duration(seconds: 2),
-      const Duration(seconds: 4),
-    ]) {
-      if (delay != Duration.zero) await Future<void>.delayed(delay);
-      if (_currentUid() != uid) return;
-      try {
-        final status = await service.syncUserInfo(
-          uid,
-          latestProPurchaseAt: _purchases.proLatestPurchaseAtFor(uid),
-        );
-        if (!_purchases.isPro || status.userType == 'pro user') return;
-      } catch (_) {
-        // A network or webhook delay is retried only for this purchase action.
+    _purchaseSyncs++;
+    _emit();
+    try {
+      await service.syncPurchases();
+      if (_disposed || _currentUid() != uid || _householdId != householdId) {
+        return;
       }
+      if (householdId != null) {
+        final value = await service.readHouseholdPro(householdId);
+        if (_disposed || _currentUid() != uid || _householdId != householdId) {
+          return;
+        }
+        _householdPro = value;
+        _scheduleHouseholdExpiry();
+      }
+    } finally {
+      _purchaseSyncs--;
+      _emit();
     }
   }
 
@@ -310,8 +320,9 @@ class ProAccess extends ChangeNotifier {
   /// Only notifies when the derived state actually changed, so listening to
   /// [CareStore] cannot turn into a rebuild loop.
   void _emit() {
+    if (_disposed) return;
     final signature =
-        '$isFreeCouponActive|$isPro|$hasMultiPet|$hasAi|$aiParsesUsed|$aiParseLimit|'
+        '$isSyncingPurchases|$isFreeCouponActive|$isPro|$hasMultiPet|$hasAi|$aiParsesUsed|$aiParseLimit|'
         '$activeMedicationCourses|${_care.household?.pets.length}';
     if (signature == _lastSignature) return;
     _lastSignature = signature;
@@ -320,6 +331,7 @@ class ProAccess extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _purchases.removeListener(_emit);
     _care.removeListener(_syncHousehold);
     _proSubscription?.cancel();

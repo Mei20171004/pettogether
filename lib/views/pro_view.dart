@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,10 +25,10 @@ extension ProFeatureDetails on ProFeature {
     ProFeature.ai => AppConfig.aiEntitlementId,
   };
 
-  bool isUnlocked(PurchaseStore purchases) => switch (this) {
-    ProFeature.health => purchases.isPro,
-    ProFeature.multiPet => purchases.hasMultiPet,
-    ProFeature.ai => purchases.hasAi,
+  bool isUnlocked(ProAccess access) => switch (this) {
+    ProFeature.health => access.isPro,
+    ProFeature.multiPet => access.hasMultiPet,
+    ProFeature.ai => access.hasAi,
   };
 
   bool matches(Package package) {
@@ -145,6 +146,7 @@ class _ProViewState extends State<ProView> {
   String? _purchaseMessage;
   String? _buyingProduct;
   bool _accessPending = false;
+  bool _restoringAccess = false;
   final TextEditingController _couponController = TextEditingController();
   bool _redeemingCoupon = false;
 
@@ -198,20 +200,40 @@ class _ProViewState extends State<ProView> {
 
   Future<void> _buy(Package package) async {
     final purchases = context.read<PurchaseStore>();
-    if (purchases.isPurchasing) return;
+    if (purchases.isPurchasing ||
+        _buyingProduct != null ||
+        _restoringAccess ||
+        context.read<ProAccess>().isSyncingPurchases) {
+      return;
+    }
     final language = context.read<AppLanguageStore>().language;
     setState(() {
       _purchaseMessage = null;
       _buyingProduct = package.storeProduct.identifier;
     });
+    var purchaseReceived = false;
     try {
       final unlocked = await purchases.purchase(
         package,
         entitlementId: widget.feature.entitlementId,
       );
+      purchaseReceived = unlocked;
       if (!mounted) return;
       if (unlocked) {
-        unawaited(context.read<ProAccess>().syncUserInfoAfterPurchase());
+        setState(
+          () => _purchaseMessage = L10n.text(
+            language,
+            'Purchase received. Synchronizing household access…',
+            '購入を受け付けました。世帯の利用権を同期中…',
+            '购买已完成，正在同步家庭权限…',
+            '구매가 완료되었습니다. 가족 권한을 동기화 중…',
+          ),
+        );
+        await context.read<ProAccess>().refreshPurchases();
+        if (!mounted) return;
+        if (!widget.feature.isUnlocked(context.read<ProAccess>())) {
+          throw const PurchaseAccessPending();
+        }
       }
       setState(
         () => _purchaseMessage = unlocked
@@ -235,6 +257,7 @@ class _ProViewState extends State<ProView> {
       setState(() {
         _purchaseMessage = _purchaseFailure(language, error);
         _accessPending =
+            purchaseReceived ||
             error is PurchaseAccessPending ||
             error is PlatformException &&
                 PurchasesErrorHelper.getErrorCode(error) ==
@@ -246,6 +269,15 @@ class _ProViewState extends State<ProView> {
   }
 
   String _purchaseFailure(AppLanguage language, Object error) {
+    if (error is FirebaseFunctionsException) {
+      return L10n.text(
+        language,
+        'Could not verify subscription access (${error.code}). Tap Sync subscription access to retry.',
+        '利用権を確認できませんでした（${error.code}）。利用権の同期を再試行してください。',
+        '订阅权限核验失败（${error.code}）。请点击“同步订阅权限”重试。',
+        '구독 권한을 확인하지 못했습니다 (${error.code}). 구독 권한 동기화를 다시 시도하세요.',
+      );
+    }
     if (error is PurchaseAccessPending) {
       return L10n.text(
         language,
@@ -299,17 +331,40 @@ class _ProViewState extends State<ProView> {
   Future<void> _restore() async {
     final purchases = context.read<PurchaseStore>();
     final language = context.read<AppLanguageStore>().language;
-    if (purchases.isPurchasing) return;
-    setState(() => _purchaseMessage = null);
+    if (purchases.isPurchasing ||
+        _buyingProduct != null ||
+        _restoringAccess ||
+        context.read<ProAccess>().isSyncingPurchases) {
+      return;
+    }
+    setState(() {
+      _purchaseMessage = null;
+      _restoringAccess = true;
+    });
+    var restoreReceived = false;
     try {
       final restored = await purchases.restore(
         entitlementId: widget.feature.entitlementId,
       );
+      restoreReceived = restored;
       if (!mounted) return;
       if (restored) {
-        _accessPending = false;
-        unawaited(context.read<ProAccess>().syncUserInfoAfterPurchase());
+        setState(
+          () => _purchaseMessage = L10n.text(
+            language,
+            'Purchase received. Synchronizing household access…',
+            '購入を受け付けました。世帯の利用権を同期中…',
+            '购买已完成，正在同步家庭权限…',
+            '구매가 완료되었습니다. 가족 권한을 동기화 중…',
+          ),
+        );
+        await context.read<ProAccess>().refreshPurchases();
+        if (!mounted) return;
+        if (!widget.feature.isUnlocked(context.read<ProAccess>())) {
+          throw const PurchaseAccessPending();
+        }
       }
+      if (restored) _accessPending = false;
       setState(
         () => _purchaseMessage = restored
             ? L10n.text(
@@ -327,6 +382,43 @@ class _ProViewState extends State<ProView> {
                 'この機能の有効な購入が見つかりませんでした。',
                 '未找到此功能的有效订阅。',
                 '이 기능의 활성 구매가 없습니다.',
+              ),
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _purchaseMessage = _purchaseFailure(language, error);
+          _accessPending = _accessPending || restoreReceived;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _restoringAccess = false);
+    }
+  }
+
+  Future<void> _syncAccess() async {
+    final language = context.read<AppLanguageStore>().language;
+    if (context.read<ProAccess>().isSyncingPurchases) return;
+    try {
+      await context.read<ProAccess>().refreshPurchases();
+      if (!mounted) return;
+      _accessPending = false;
+      setState(
+        () => _purchaseMessage =
+            widget.feature.isUnlocked(context.read<ProAccess>())
+            ? L10n.text(
+                language,
+                'Access synchronized.',
+                '利用権を同期しました。',
+                '订阅权限已同步。',
+                '권한이 동기화되었습니다.',
+              )
+            : L10n.text(
+                language,
+                'No active subscription for this feature.',
+                'この機能の有効な購入はありません。',
+                '当前没有此功能的有效订阅。',
+                '이 기능의 활성 구독이 없습니다.',
               ),
       );
     } catch (error) {
@@ -355,7 +447,7 @@ class _ProViewState extends State<ProView> {
                 _heroCard(context, language, purchases),
                 const SizedBox(height: 22),
                 if (!access.isFreeCouponActive &&
-                    !widget.feature.isUnlocked(purchases))
+                    !widget.feature.isUnlocked(access))
                   ..._plans(language, purchases, packages),
                 if (_purchaseMessage != null) ...[
                   const SizedBox(height: 12),
@@ -365,7 +457,13 @@ class _ProViewState extends State<ProView> {
                 if (purchases.isAvailable)
                   Center(
                     child: TextButton(
-                      onPressed: purchases.isPurchasing ? null : _restore,
+                      onPressed:
+                          purchases.isPurchasing ||
+                              _buyingProduct != null ||
+                              _restoringAccess ||
+                              access.isSyncingPurchases
+                          ? null
+                          : _restore,
                       child: Text(
                         L10n.text(
                           language,
@@ -379,6 +477,28 @@ class _ProViewState extends State<ProView> {
                       ),
                     ),
                   ),
+                Center(
+                  child: TextButton(
+                    onPressed:
+                        purchases.isPurchasing ||
+                            _buyingProduct != null ||
+                            _restoringAccess ||
+                            access.isSyncingPurchases
+                        ? null
+                        : _syncAccess,
+                    child: Text(
+                      L10n.text(
+                        language,
+                        access.isSyncingPurchases
+                            ? 'Synchronizing…'
+                            : 'Sync subscription access',
+                        access.isSyncingPurchases ? '同期中…' : '利用権を同期',
+                        access.isSyncingPurchases ? '正在同步…' : '同步订阅权限',
+                        access.isSyncingPurchases ? '동기화 중…' : '구독 권한 동기화',
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 16),
                 if (AppConfig.customCouponEnabled) ...[
                   _couponCard(language, access),
@@ -396,15 +516,15 @@ class _ProViewState extends State<ProView> {
                 ),
                 const SizedBox(height: 12),
                 ..._featureCards(widget.feature),
-                if (widget.feature != ProFeature.health) ...[
+                ...[
                   const SizedBox(height: 12),
                   Text(
                     L10n.text(
                       language,
-                      'AI care entry and additional pets are separate subscriptions.',
-                      'AIケア入力と複数ペットは別々のサブスクリプションです。',
-                      'AI 护理录入和多宠物功能为独立订阅。',
-                      'AI 케어 입력과 여러 반려동물 기능은 별도 구독입니다.',
+                      'Health Pro, AI care entry, and additional pets are three separate subscriptions.',
+                      '健康Pro・AIケア入力・複数ペットは、それぞれ別のサブスクリプションです。',
+                      '健康 Pro、AI 护理录入和多宠物是三个独立订阅。',
+                      '건강 Pro, AI 케어 입력, 여러 반려동물은 각각 별도 구독입니다.',
                     ),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
@@ -712,7 +832,12 @@ class _ProViewState extends State<ProView> {
           highlighted: packages[i].packageType == PackageType.annual,
           isPurchasing: _buyingProduct == packages[i].storeProduct.identifier,
           monthlyOnly: widget.feature != ProFeature.health,
-          onTap: purchases.isPurchasing || _accessPending
+          onTap:
+              purchases.isPurchasing ||
+                  _buyingProduct != null ||
+                  _restoringAccess ||
+                  context.read<ProAccess>().isSyncingPurchases ||
+                  _accessPending
               ? null
               : () => _buy(packages[i]),
         ),
@@ -733,8 +858,9 @@ class _ProViewState extends State<ProView> {
     AppLanguage language,
     PurchaseStore purchases,
   ) {
-    final couponActive = context.watch<ProAccess>().isFreeCouponActive;
-    final isUnlocked = couponActive || widget.feature.isUnlocked(purchases);
+    final access = context.watch<ProAccess>();
+    final couponActive = access.isFreeCouponActive;
+    final isUnlocked = couponActive || widget.feature.isUnlocked(access);
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -788,6 +914,10 @@ class _ProViewState extends State<ProView> {
                     'Free coupon 已解锁全部功能',
                     '무료 쿠폰으로 모든 기능을 사용할 수 있습니다',
                   )
+                : widget.feature == ProFeature.health && access.isLegacy
+                ? L10n.text(language, 'Health Pro unlocked with early-user access',
+                    '初期ユーザー特典で健康Proを利用できます', '健康 Pro 已解锁（早期用户权益）',
+                    '초기 사용자 혜택으로 건강 Pro가 활성화되었습니다')
                 : isUnlocked
                 ? L10n.text(
                     language,

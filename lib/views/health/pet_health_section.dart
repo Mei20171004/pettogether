@@ -10,6 +10,7 @@ import '../../store/care_store.dart';
 import '../../store/pro_access.dart';
 import '../../theme/app_theme.dart';
 import '../add_task_view.dart';
+import '../pro_view.dart';
 import '../widgets/common.dart';
 import '../widgets/medication_adherence_chart.dart';
 import '../widgets/task_card.dart';
@@ -18,6 +19,7 @@ import 'health_record_detail_view.dart';
 import 'health_record_editor_view.dart';
 import 'medication_plan_detail_view.dart';
 import 'pro_menu_web_view.dart';
+import 'vet_visit_pack_view.dart';
 
 /// A single pet's health file and its available Pro menu actions.
 class PetHealthSection extends StatefulWidget {
@@ -53,6 +55,8 @@ class _PetHealthSectionState extends State<PetHealthSection> {
           const SizedBox(height: 12),
           _summaryCard(store, pet, language),
           const SizedBox(height: 20),
+          _healthTools(pet, language, hasProAccess),
+          const SizedBox(height: 20),
           PetSectionTitle(
             title: L10n.text(language, 'Health trends', '健康の推移',
                 '健康趋势', '건강 추이'),
@@ -86,6 +90,115 @@ class _PetHealthSectionState extends State<PetHealthSection> {
         ],
       ),
     );
+  }
+
+  Widget _healthTools(Pet pet, AppLanguage language, bool unlocked) {
+    final status = L10n.text(
+      language,
+      unlocked ? 'Unlocked' : 'Health Pro',
+      unlocked ? '利用可能' : '健康Pro',
+      unlocked ? '已解锁' : '健康 Pro',
+      unlocked ? '활성화됨' : '건강 Pro',
+    );
+    return PetCard(
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              L10n.text(
+                language,
+                'Health Pro tools',
+                '健康Proの機能',
+                '健康 Pro 工具',
+                '건강 Pro 도구',
+              ),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            ListTile(
+              key: const ValueKey('health_tool_photos'),
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.add_photo_alternate_outlined),
+              title: Text(
+                L10n.text(
+                  language,
+                  'Medical record photos',
+                  '医療記録の写真',
+                  '医疗记录照片',
+                  '진료 기록 사진',
+                ),
+              ),
+              subtitle: Text(status),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () =>
+                  _openProTool(HealthRecordEditorView(initialPetId: pet.id)),
+            ),
+            ListTile(
+              key: const ValueKey('health_tool_pdf'),
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.picture_as_pdf_outlined),
+              title: Text(
+                L10n.text(
+                  language,
+                  'Vet visit PDF',
+                  '受診PDF',
+                  '兽医就诊 PDF',
+                  '진료 PDF',
+                ),
+              ),
+              subtitle: Text(
+                L10n.text(
+                  language,
+                  'Free preview · PDF export: $status',
+                  'プレビューは無料・PDF書き出し：$status',
+                  '免费预览 · PDF 导出：$status',
+                  '무료 미리보기 · PDF 내보내기: $status',
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => VetVisitPackView(pet: pet),
+                ),
+              ),
+            ),
+            ListTile(
+              key: const ValueKey('health_tool_courses'),
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.medication_outlined),
+              title: Text(
+                L10n.text(
+                  language,
+                  'Multiple medication courses',
+                  '複数の投薬コース',
+                  '多个用药疗程',
+                  '여러 투약 코스',
+                ),
+              ),
+              subtitle: Text(status),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _openProTool(
+                AddTaskView(
+                  initialCategory: CareCategory.medication,
+                  initialPetId: pet.id,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openProTool(Widget page) async {
+    if (!context.read<ProAccess>().isPro) {
+      await showProPaywall(context);
+      if (!mounted || !context.read<ProAccess>().isPro) return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => page));
   }
 
   Widget _proMenuButtons(AppLanguage language, CareStore store, Pet pet) {
@@ -286,8 +399,9 @@ class _PetHealthSectionState extends State<PetHealthSection> {
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
                   fullscreenDialog: true,
-                  builder: (_) => const AddTaskView(
-                      initialCategory: CareCategory.medication),
+                  builder: (_) => AddTaskView(
+                      initialCategory: CareCategory.medication,
+                      initialPetId: pet.id),
                 ),
               ),
               icon: const Icon(Icons.add, size: 18),

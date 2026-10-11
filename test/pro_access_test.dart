@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -49,6 +51,29 @@ class _CouponEntitlementService extends Fake implements EntitlementService {
   }
 }
 
+class _CloudEntitlements extends Fake implements EntitlementService {
+  HouseholdPro state = HouseholdPro.none;
+  final events = StreamController<HouseholdPro>.broadcast();
+  Completer<void>? pending;
+  bool fail = false;
+
+  @override
+  Future<void> syncPurchases() async {
+    if (pending != null) await pending!.future;
+    if (fail) throw StateError('fixture network error');
+  }
+
+  @override
+  Future<HouseholdPro> readHouseholdPro(String householdId) async => state;
+
+  @override
+  Stream<HouseholdPro> watchHouseholdPro(String householdId) => events.stream;
+  @override
+  Stream<AiUsage> watchAiUsage(String uid) => Stream.value(AiUsage.empty);
+  @override
+  Future<DateTime?> checkFreeCoupon(String uid) async => null;
+}
+
 /// A ProAccess with no RevenueCat key and no Firestore behind it, which is the
 /// state a free user starts in.
 Future<({ProAccess access, CareStore care})> _freeUser() async {
@@ -90,6 +115,77 @@ void main() {
     expect(household.multiPetActiveNow, isFalse);
     expect(household.aiActiveNow, isFalse);
   });
+
+  test(
+    'a device-only purchase does not unlock unsynchronized cloud features',
+    () async {
+      final free = await _freeUser();
+      final cloud = _CloudEntitlements();
+      final paid = _EntitlementPurchaseStore({AppConfig.multiPetEntitlementId});
+      final access = ProAccess(
+        purchases: paid,
+        care: free.care,
+        entitlements: cloud,
+        currentUid: () => 'fixture-user',
+      );
+      addTearDown(() {
+        access.dispose();
+        free.access.dispose();
+        free.care.dispose();
+        cloud.events.close();
+        paid.dispose();
+      });
+      expect(access.hasMultiPet, isFalse);
+      expect(access.canAddPet, isFalse);
+    },
+  );
+
+  for (final scenario in ['success', 'failure-retry', 'account-switch']) {
+    test('server synchronization: $scenario', () async {
+      final free = await _freeUser();
+      final cloud = _CloudEntitlements()..pending = Completer<void>();
+      final paid = _EntitlementPurchaseStore({AppConfig.multiPetEntitlementId});
+      var uid = 'fixture-user';
+      final access = ProAccess(
+        purchases: paid,
+        care: free.care,
+        entitlements: cloud,
+        currentUid: () => uid,
+      );
+      addTearDown(() {
+        access.dispose();
+        free.access.dispose();
+        free.care.dispose();
+        cloud.events.close();
+        paid.dispose();
+      });
+      cloud.state = HouseholdPro(
+        active: false,
+        legacy: false,
+        multiPetActive: true,
+        aiActive: false,
+        multiPetExpiresAt: DateTime.now().add(const Duration(minutes: 1)),
+      );
+      final sync = access.refreshPurchases();
+      expect(access.isSyncingPurchases, isTrue);
+      expect(access.canAddPet, isFalse);
+      if (scenario == 'account-switch') uid = 'other-fixture-user';
+      if (scenario == 'failure-retry') cloud.fail = true;
+      cloud.pending!.complete();
+      if (scenario == 'failure-retry') {
+        await expectLater(sync, throwsStateError);
+        expect(access.canAddPet, isFalse);
+        cloud.fail = false;
+        await access.refreshPurchases();
+      } else {
+        await sync;
+      }
+      expect(access.isSyncingPurchases, isFalse);
+      expect(access.canAddPet, scenario != 'account-switch');
+      expect(access.hasAi, isFalse);
+      expect(access.isPro, isFalse);
+    });
+  }
 
   group('ProAccess, for a user who has not paid', () {
     test('starts locked out of the paid health features', () async {

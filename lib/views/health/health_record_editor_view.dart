@@ -768,7 +768,7 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
           '진료 기록 사진 첨부는 Pro 기능입니다.',
         ),
       );
-      return;
+      if (!mounted || !context.read<ProAccess>().canAttachPhotos) return;
     }
     final source = await showModalBottomSheet<ImageSource>(
       context: context,

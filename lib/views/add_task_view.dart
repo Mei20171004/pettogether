@@ -16,9 +16,10 @@ import 'widgets/pet_time_picker.dart';
 import 'pro_view.dart';
 
 class AddTaskView extends StatefulWidget {
-  const AddTaskView({super.key, this.initialDate, this.initialCategory});
+  const AddTaskView({super.key, this.initialDate, this.initialCategory, this.initialPetId});
 
   final DateTime? initialDate;
+  final String? initialPetId;
 
   /// Preselects a category, so "new course" on the health page opens the same
   /// form the "+" button does, already on medication.
@@ -67,6 +68,7 @@ class _AddTaskViewState extends State<AddTaskView> {
     final base = widget.initialDate ?? DateTime.now();
     _dueDate = DateTime(base.year, base.month, base.day,
         DateTime.now().hour, DateTime.now().minute);
+    if (widget.initialPetId != null) _petIds.add(widget.initialPetId!);
     final initial = widget.initialCategory;
     if (initial != null) {
       _category = initial;
@@ -105,10 +107,10 @@ class _AddTaskViewState extends State<AddTaskView> {
         ),
         actions: [
           TextButton(
-            onPressed: (!_canSave || store.isSavingTask)
+            onPressed: (!_canSave || (store.isSavingTask || _isMedication && store.isSavingHealth))
                 ? null
                 : () => _save(store),
-            child: store.isSavingTask
+            child: (store.isSavingTask || _isMedication && store.isSavingHealth)
                 ? const SizedBox(
                     width: 18,
                     height: 18,
@@ -485,10 +487,10 @@ class _AddTaskViewState extends State<AddTaskView> {
                     const SizedBox(height: 20),
                     ElevatedButton(
                       style: pawPrimaryButtonStyle(),
-                      onPressed: (!_canSave || store.isSavingTask)
+                      onPressed: (!_canSave || (store.isSavingTask || _isMedication && store.isSavingHealth))
                           ? null
                           : () => _save(store),
-                      child: store.isSavingTask
+                      child: (store.isSavingTask || _isMedication && store.isSavingHealth)
                           ? const SizedBox(
                               width: 20,
                               height: 20,
@@ -539,6 +541,7 @@ class _AddTaskViewState extends State<AddTaskView> {
   }
 
   Future<void> _save(CareStore store) async {
+    if (store.isSavingTask || _isMedication && store.isSavingHealth) return;
     if (_isMedication) {
       await _saveMedicationCourse(store);
       return;
@@ -577,7 +580,7 @@ class _AddTaskViewState extends State<AddTaskView> {
           '여러 투약 코스를 동시에 진행하는 것은 Pro 기능입니다.',
         ),
       );
-      return;
+      if (!mounted || !access.canStartMedicationCourse) return;
     }
     final caregiver = store.currentCaregiver;
     final petId = _petIds.isNotEmpty
@@ -586,6 +589,15 @@ class _AddTaskViewState extends State<AddTaskView> {
     if (caregiver == null || petId == null) return;
 
     final details = _medicationController.read();
+    if (!details.isValid) {
+      final language = context.read<AppLanguageStore>().language;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        L10n.text(language, 'Enter the medicine, dose and valid course dates.',
+            '薬名・服用量・有効な期間を入力してください。', '请填写药物名称、每次剂量和有效的疗程日期。',
+            '약 이름, 용량, 올바른 투약 기간을 입력하세요.'),
+      )));
+      return;
+    }
     final saved = await store.saveMedicationCourse(
       plan: MedicationPlan(
         id: uuid(),
@@ -604,7 +616,16 @@ class _AddTaskViewState extends State<AddTaskView> {
       startDate: details.startDate,
       endDate: details.endDate,
     );
-    if (saved != null && mounted) Navigator.of(context).pop();
+    if (!mounted) return;
+    if (saved != null) {
+      Navigator.of(context).pop();
+    } else {
+      final language = context.read<AppLanguageStore>().language;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        store.errorMessage ?? L10n.text(language, 'Could not save. Please retry.',
+            '保存できませんでした。再試行してください。', '保存失败，请重试。', '저장하지 못했습니다. 다시 시도하세요.'),
+      )));
+    }
   }
 
   bool get _needsWeekdays =>

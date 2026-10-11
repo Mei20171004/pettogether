@@ -89,6 +89,7 @@ class _PetTogetherAppState extends State<PetTogetherApp>
       ) {
         _store.setAuthenticatedUser(user?.uid);
         unawaited(_proAccess.refreshFreeCoupon());
+        unawaited(_refreshPurchases());
         if (user != null) {
           _queueUserInfoSync(user.uid);
           unawaited(_store.restoreSession());
@@ -97,6 +98,14 @@ class _PetTogetherAppState extends State<PetTogetherApp>
       });
     }
     _initializeAppLinks();
+  }
+
+  Future<void> _refreshPurchases() async {
+    try {
+      await _proAccess.refreshPurchases();
+    } catch (error) {
+      debugPrint('Subscription refresh failed: $error');
+    }
   }
 
   void _onPurchaseStateChanged() {
@@ -129,6 +138,7 @@ class _PetTogetherAppState extends State<PetTogetherApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_proAccess.refreshFreeCoupon());
+      unawaited(_refreshPurchases());
       if (AppConfig.useFirebase && Firebase.apps.isNotEmpty) {
         final uid = FirebaseAuth.instance.currentUser?.uid;
         if (uid != null) _queueUserInfoSync(uid);

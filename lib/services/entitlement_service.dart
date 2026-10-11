@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 /// The Pro state of a household, mirrored into Firestore by the RevenueCat
 /// webhook. Clients can read it but never write it.
@@ -186,6 +187,18 @@ class EntitlementService {
     ).set({'coupon': code.trim(), 'redeemedAt': FieldValue.serverTimestamp()});
     return checkFreeCoupon(uid);
   }
+
+  /// The server verifies RevenueCat directly; clients cannot submit paid flags.
+  Future<void> syncPurchases() async {
+    await FirebaseFunctions.instanceFor(region: 'asia-northeast1')
+        .httpsCallable('syncPurchaseEntitlements')
+        .call();
+  }
+
+  Future<HouseholdPro> readHouseholdPro(String householdId) async =>
+      HouseholdPro.fromSnapshot(
+        await _proDoc(householdId).get(const GetOptions(source: Source.server)),
+      );
 
   /// Errors (offline, permission denied) are surfaced to the listener, which
   /// falls back to "not unlocked" rather than guessing.
