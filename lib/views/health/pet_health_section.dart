@@ -18,6 +18,7 @@ import '../widgets/weight_chart.dart';
 import 'health_record_detail_view.dart';
 import 'health_record_editor_view.dart';
 import 'medication_plan_detail_view.dart';
+import 'medical_history_view.dart';
 import 'pro_menu_web_view.dart';
 import 'vet_visit_pack_view.dart';
 
@@ -54,6 +55,8 @@ class _PetHealthSectionState extends State<PetHealthSection> {
           ),
           const SizedBox(height: 12),
           _summaryCard(store, pet, language),
+          const SizedBox(height: 20),
+          _medicalRecords(store, pet, language),
           const SizedBox(height: 20),
           _healthTools(pet, language, hasProAccess),
           const SizedBox(height: 20),
@@ -92,6 +95,38 @@ class _PetHealthSectionState extends State<PetHealthSection> {
     );
   }
 
+  Widget _medicalRecords(CareStore store, Pet pet, AppLanguage language) {
+    final count = store.recordsForPet(pet.id)
+        .where((record) => !record.type.isCourseGenerated).length;
+    return PetCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(L10n.text(language, 'Medical records', '医療記録', '医疗记录', '진료 기록'),
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const ValueKey('medical_record_new'),
+            icon: const Icon(Icons.add),
+            label: Text(L10n.text(language, 'New record', '記録を追加', '新增记录', '기록 추가')),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              fullscreenDialog: true,
+              builder: (_) => HealthRecordEditorView(initialPetId: pet.id),
+            )),
+          ),
+          OutlinedButton.icon(
+            key: const ValueKey('medical_record_history'),
+            icon: const Icon(Icons.history),
+            label: Text('${L10n.text(language, 'View history', '過去の記録を見る', '查看历史记录', '지난 기록 보기')} ($count)'),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => MedicalHistoryView(petId: pet.id),
+            )),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _healthTools(Pet pet, AppLanguage language, bool unlocked) {
     final status = L10n.text(
       language,
@@ -106,15 +141,28 @@ class _PetHealthSectionState extends State<PetHealthSection> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Row(
+              children: [
+                Expanded(child: Text(
+                  L10n.text(language, 'Health Pro tools', '健康Proの機能',
+                      '健康 Pro 工具', '건강 Pro 도구'),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                )),
+                TextButton(
+                  key: const ValueKey('health_pro_details'),
+                  onPressed: () => showProPaywall(context),
+                  child: Text(L10n.text(language, 'View Health Pro', '健康Proを見る',
+                      '查看健康 Pro', '건강 Pro 보기')),
+                ),
+              ],
+            ),
             Text(
-              L10n.text(
-                language,
-                'Health Pro tools',
-                '健康Proの機能',
-                '健康 Pro 工具',
-                '건강 Pro 도구',
-              ),
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              L10n.text(language,
+                  'Overview, text records and one active course are free. Pro adds photos, PDF export and concurrent courses.',
+                  '健康サマリー・文字の記録・1つの投薬コースは無料。Proで写真添付・PDF書き出し・複数コースを利用できます。',
+                  '健康概览、文字记录和一个进行中疗程免费。Pro 增加照片、PDF 导出和多个同时进行的疗程。',
+                  '건강 요약, 텍스트 기록, 진행 중인 투약 코스 1개는 무료입니다. Pro는 사진, PDF 내보내기, 여러 코스를 제공합니다.'),
+              style: const TextStyle(color: PawColors.muted, fontSize: 12),
             ),
             ListTile(
               key: const ValueKey('health_tool_photos'),

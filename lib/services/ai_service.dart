@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:firebase_core/firebase_core.dart';
 
+import '../l10n/l10n.dart';
 import '../models/ai_plan.dart';
 import '../models/models.dart';
 
@@ -22,7 +23,11 @@ class AiService {
   /// document, which costs tokens without improving the parse.
   static const int maxInstructionLength = 1000;
 
-  Future<AiParseResult> parseInstruction(String text, List<Pet> pets) async {
+  Future<AiParseResult> parseInstruction(
+    String text,
+    List<Pet> pets, {
+    required AppLanguage language,
+  }) async {
     if (Firebase.apps.isEmpty) {
       throw const AiFailure(
         AiFailureKind.configuration,
@@ -37,7 +42,7 @@ class AiService {
       final googleAI = FirebaseAI.googleAI();
       final model = googleAI.generativeModel(
         model: modelName,
-        systemInstruction: Content.text(_systemPrompt()),
+        systemInstruction: Content.text(systemPrompt(language)),
         generationConfig: GenerationConfig(
           responseMimeType: 'application/json',
           responseSchema: _schema,
@@ -138,12 +143,20 @@ class AiService {
     return AiFailure(AiFailureKind.server, error.toString());
   }
 
-  String _systemPrompt() {
+  static String systemPrompt(AppLanguage language) {
     final categories = CareCategory.builtIns.map((c) => c.id).toList();
+    final outputLanguage = switch (language) {
+      AppLanguage.japanese => 'Japanese (ja)',
+      AppLanguage.english => 'English (en)',
+      AppLanguage.chinese => 'Simplified Chinese (zh)',
+      AppLanguage.korean => 'Korean (ko)',
+    };
     return '''
 You are a pet-care scheduling assistant. Parse the user's instruction and extract concrete care tasks for their pets.
 
 Rules:
+- Write all task titles in $outputLanguage, regardless of the language of the user instruction.
+- Keep petName exactly as provided in Existing pets. Do not translate pet names or change category ids and schema enum values.
 - Each task is either a recurring routine or a one-off event.
 - Map each task to exactly one category id from: ${categories.join(', ')}.
 - "kind" is "routine" for recurring things, "oneOff" for one-time events.

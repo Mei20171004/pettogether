@@ -8,6 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pettogether/l10n/l10n.dart';
 import 'package:pettogether/models/models.dart';
+import 'package:pettogether/models/health.dart';
+import 'package:pettogether/views/health/health_record_detail_view.dart';
+import 'package:pettogether/views/health/health_record_editor_view.dart';
 import 'package:pettogether/models/vet_visit_pack.dart';
 import 'package:pettogether/services/mock_care_service.dart';
 import 'package:pettogether/services/vet_report_pdf.dart';
@@ -74,6 +77,49 @@ void main() {
     await tester.scrollUntilVisible(find.text('健康 Pro、AI 护理录入和多宠物是三个独立订阅。'), 200,
       scrollable: find.byType(Scrollable).first);
     expect(find.text('健康 Pro、AI 护理录入和多宠物是三个独立订阅。'), findsOneWidget);
+  });
+
+  testWidgets('free medical history opens the selected pet record and its saved photos', (tester) async {
+    final care = await mount(tester, const PetHealthSection(pet: dog));
+    expect(find.byKey(const ValueKey('medical_record_new')), findsOneWidget);
+    expect(find.byKey(const ValueKey('medical_record_history')), findsOneWidget);
+    expect(find.textContaining('健康概览、文字记录和一个进行中疗程免费'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('medical_record_history')));
+    await tester.tap(find.byKey(const ValueKey('medical_record_history')));
+    await tester.pumpAndSettle();
+    expect(find.text('还没有医疗记录。'), findsOneWidget);
+    final now = DateTime.now();
+    await care.saveHealthRecord(HealthRecord(
+      id: 'dog-visit', petId: 'dog', petNameSnapshot: 'Luna',
+      type: HealthRecordType.vetVisit, occurredAt: now, title: 'Fixture checkup',
+      createdByID: 'fixture', createdByNameSnapshot: 'Tester', createdAt: now,
+      attachments: [HealthAttachment(id: 'fixture-photo', url: 'https://example.invalid/fixture.png',
+        storagePath: 'fixture/photo.jpg', sizeBytes: 100, uploadedAt: now)],
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Fixture checkup'), findsOneWidget);
+    expect(find.textContaining('Mochi'), findsNothing);
+    await tester.tap(find.text('Fixture checkup'));
+    await tester.pumpAndSettle();
+    expect(find.byType(HealthRecordDetailView), findsOneWidget);
+    expect(find.text('照片'), findsOneWidget);
+    await tester.ensureVisible(find.byType(Image));
+    await tester.tap(find.byType(Image));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    expect(find.byType(ProView), findsNothing);
+  });
+
+  testWidgets('editor can open history and return without losing its draft', (tester) async {
+    await mount(tester, const HealthRecordEditorView(initialPetId: 'dog'));
+    await tester.enterText(find.byType(TextField).first, 'Draft checkup');
+    tester.testTextInput.hide();
+    await tester.tap(find.byKey(const ValueKey('editor_medical_history')));
+    await tester.pumpAndSettle();
+    expect(find.text('还没有医疗记录。'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Draft checkup'), findsOneWidget);
   });
 
   testWidgets('a paid new course stays assigned to the selected dog', (tester) async {

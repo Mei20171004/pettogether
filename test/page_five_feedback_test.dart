@@ -11,6 +11,8 @@ import 'package:pettogether/models/health.dart';
 import 'package:pettogether/models/models.dart';
 import 'package:pettogether/services/mock_care_service.dart';
 import 'package:pettogether/store/care_store.dart';
+import 'package:pettogether/store/pro_access.dart';
+import 'package:pettogether/store/purchase_store.dart';
 import 'package:pettogether/theme/app_theme.dart';
 import 'package:pettogether/views/create_join_view.dart';
 import 'package:pettogether/views/health/health_record_editor_view.dart';
@@ -113,6 +115,10 @@ void main() {
       MultiProvider(
         providers: [
           ChangeNotifierProvider<CareStore>.value(value: store),
+          ChangeNotifierProvider(create: (_) => PurchaseStore(apiKey: '')),
+          ChangeNotifierProvider(create: (context) => ProAccess(
+            purchases: context.read<PurchaseStore>(), care: store, currentUid: () => null,
+          )),
           ChangeNotifierProvider<AppLanguageStore>(
             create: (_) => AppLanguageStore(AppLanguage.chinese),
           ),

@@ -323,7 +323,9 @@ class _HouseholdTabsState extends State<_HouseholdTabs> {
 
     final pets = context.read<CareStore>().household?.pets ?? const <Pet>[];
     try {
-      final result = await AiService.instance.parseInstruction(trimmed, pets);
+      final result = await AiService.instance.parseInstruction(
+        trimmed, pets, language: language,
+      );
       // Count the parse only once the model actually answered, so a failed
       // call does not eat the user's quota.
       unawaited(access.recordAiParse());

@@ -1379,6 +1379,8 @@ class CareStore extends ChangeNotifier {
   }) async {
     final household = _household;
     if (household == null) return null;
+    _errorMessage = null;
+    notifyListeners();
     try {
       return await StorageService.instance.uploadHealthAttachment(
         householdID: household.id,
@@ -1388,7 +1390,7 @@ class CareStore extends ChangeNotifier {
     } catch (error) {
       _errorMessage = _describe(error);
       notifyListeners();
-      return null;
+      rethrow;
     }
   }
 

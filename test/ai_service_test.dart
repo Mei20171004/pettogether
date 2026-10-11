@@ -5,8 +5,29 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pettogether/services/ai_service.dart';
+import 'package:pettogether/l10n/l10n.dart';
 
 void main() {
+  for (final entry in {
+    AppLanguage.japanese: 'Japanese (ja)',
+    AppLanguage.english: 'English (en)',
+    AppLanguage.chinese: 'Simplified Chinese (zh)',
+    AppLanguage.korean: 'Korean (ko)',
+  }.entries) {
+    test(
+      'AI task titles follow ${entry.key.name} UI even for another input language',
+      () {
+        final prompt = AiService.systemPrompt(entry.key);
+        expect(prompt, contains('task titles in ${entry.value}'));
+        expect(
+          prompt,
+          contains('regardless of the language of the user instruction'),
+        );
+        expect(prompt, contains('Keep petName exactly as provided'));
+      },
+    );
+  }
+
   group('AiService failure classification', () {
     test('keeps the supported model pinned', () {
       expect(AiService.modelName, 'gemini-3.8-flash');

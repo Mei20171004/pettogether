@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -8,6 +9,7 @@ import '../../l10n/l10n.dart';
 import '../../models/care_catalog.dart';
 import '../../models/health.dart';
 import '../../models/models.dart';
+import '../../services/care_service.dart';
 import '../../store/care_store.dart';
 import '../../store/pro_access.dart';
 import '../../theme/app_theme.dart';
@@ -15,6 +17,7 @@ import '../../utils/id.dart';
 import '../widgets/common.dart';
 import '../widgets/pet_time_picker.dart';
 import '../pro_view.dart';
+import 'medical_history_view.dart';
 
 /// Creates or edits one medical record.
 ///
@@ -59,6 +62,7 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
 
   List<HealthAttachment> _attachments = [];
   bool _uploading = false;
+  String? _photoError;
 
   bool get _isEditing => widget.record != null;
 
@@ -133,6 +137,15 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
               ? L10n.text(language, 'Edit record', '記録を編集', '编辑记录', '기록 편집')
               : L10n.text(language, 'New record', '記録を追加', '新建记录', '기록 추가'),
         ),
+        actions: [
+          TextButton(
+            key: const ValueKey('editor_medical_history'),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => MedicalHistoryView(petId: _petId),
+            )),
+            child: Text(L10n.text(language, 'View records', '過去の記録', '查看记录', '기록 보기')),
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -596,6 +609,7 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
   }
 
   Widget _attachmentsCard(CareStore store, AppLanguage language) {
+    final photoAccess = context.watch<ProAccess>().canAttachPhotos;
     return PetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -618,6 +632,24 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
             ),
             style: const TextStyle(fontSize: 12, color: PawColors.muted),
           ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('medical_photo_pro'),
+              onPressed: () => showProPaywall(context),
+              icon: Icon(photoAccess ? Icons.check_circle_outline : Icons.lock_outline, size: 18),
+              label: Text(L10n.text(language,
+                  photoAccess ? 'Medical photos unlocked · Health Pro' : 'Unlock medical photos · Health Pro',
+                  photoAccess ? '医療写真は利用可能・健康Pro' : '医療写真を利用する・健康Pro',
+                  photoAccess ? '医疗照片已解锁 · 健康 Pro' : '解锁医疗照片 · 健康 Pro',
+                  photoAccess ? '진료 사진 활성화됨 · 건강 Pro' : '진료 사진 활성화 · 건강 Pro')),
+            ),
+          ),
+          if (_photoError != null) ...[
+            const SizedBox(height: 10),
+            Text(_photoError!, key: const ValueKey('health_photo_error'),
+                style: const TextStyle(color: PawColors.rose, fontSize: 13)),
+          ],
           const SizedBox(height: 12),
           Wrap(
             spacing: 10,
@@ -806,7 +838,11 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
     );
     if (source == null) return;
 
-    setState(() => _uploading = true);
+    if (!mounted) return;
+    setState(() {
+      _uploading = true;
+      _photoError = null;
+    });
     try {
       final picker = ImagePicker();
       final image = await picker.pickImage(
@@ -823,9 +859,49 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
       );
       if (attachment == null || !mounted) return;
       setState(() => _attachments = [..._attachments, attachment]);
+    } catch (error) {
+      debugPrint('Medical photo upload failed: ${error is FirebaseException ? error.code : error.runtimeType}');
+      if (!mounted) return;
+      setState(() => _photoError = _photoFailureMessage(language, error));
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
+  }
+
+  String _photoFailureMessage(AppLanguage language, Object error) {
+    if (error is FirebaseException) {
+      final code = error.code;
+      if (code == 'unauthorized' || code == 'unauthenticated') {
+        return L10n.text(language,
+            'Photo access could not be verified ($code). Sign in and sync Health Pro access, then retry.',
+            '写真の利用権を確認できません（$code）。ログインして健康Proの利用権を同期し、再試行してください。',
+            '照片上传权限核验失败（$code）。请登录并同步健康 Pro 权限后重试。',
+            '사진 권한을 확인하지 못했습니다 ($code). 로그인하고 건강 Pro 권한을 동기화한 후 다시 시도하세요.');
+      }
+      if (code == 'retry-limit-exceeded') {
+        return L10n.text(language, 'Photo upload timed out ($code). Check your connection and retry.',
+            '写真のアップロードがタイムアウトしました（$code）。接続を確認して再試行してください。',
+            '照片上传超时（$code）。请检查网络后重试。',
+            '사진 업로드 시간이 초과되었습니다 ($code). 연결을 확인하고 다시 시도하세요.');
+      }
+      return L10n.text(language, 'Photo upload failed ($code). Retry; contact support if it persists.',
+          '写真をアップロードできませんでした（$code）。再試行し、続く場合はサポートにご連絡ください。',
+          '照片上传失败（$code）。请重试；若仍失败，请联系支持。',
+          '사진 업로드에 실패했습니다 ($code). 다시 시도하고 계속 실패하면 지원팀에 문의하세요.');
+    }
+    if (error is CareServiceError && error.type == CareServiceErrorType.attachmentTooLarge) {
+      return L10n.text(language, 'Choose a photo under 5 MB.', '5 MB未満の写真を選んでください。',
+          '请选择小于 5 MB 的照片。', '5 MB 미만의 사진을 선택하세요.');
+    }
+    if (error is PlatformException) {
+      return L10n.text(language, 'Could not open the camera or photos (${error.code}). Check the app permissions in Settings.',
+          'カメラ・写真を開けません（${error.code}）。設定でアプリの権限を確認してください。',
+          '无法打开相机或相册（${error.code}）。请在系统设置中检查 App 权限。',
+          '카메라 또는 사진을 열지 못했습니다 (${error.code}). 설정에서 앱 권한을 확인하세요.');
+    }
+    return L10n.text(language, 'Could not upload the photo. Please retry.',
+        '写真をアップロードできませんでした。再試行してください。', '照片上传失败，请重试。',
+        '사진을 업로드하지 못했습니다. 다시 시도하세요.');
   }
 
   Future<void> _confirmRemoveAttachment(
@@ -935,6 +1011,14 @@ class _HealthRecordEditorViewState extends State<HealthRecordEditorView> {
     );
 
     final saved = await store.saveHealthRecord(record);
-    if (saved && mounted) Navigator.of(context).pop();
+    if (!mounted) return;
+    if (saved) {
+      Navigator.of(context).pop();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        store.errorMessage ?? L10n.text(language, 'Could not save the record. Please retry.',
+            '記録を保存できませんでした。再試行してください。', '医疗记录保存失败，请重试。', '기록을 저장하지 못했습니다. 다시 시도하세요.'),
+      )));
+    }
   }
 }

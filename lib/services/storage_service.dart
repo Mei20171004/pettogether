@@ -34,25 +34,20 @@ class StorageService {
     required String recordID,
     required Uint8List bytes,
   }) async {
-    if (bytes.lengthInBytes > HealthAttachment.maxBytes) {
+    if (bytes.lengthInBytes >= HealthAttachment.maxBytes) {
       throw const CareServiceError(CareServiceErrorType.attachmentTooLarge);
     }
     final id = uuid();
     final path = 'households/$householdID/records/$recordID/$id.jpg';
-    try {
-      final ref = FirebaseStorage.instance.ref().child(path);
-      await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-      return HealthAttachment(
-        id: id,
-        url: await ref.getDownloadURL(),
-        storagePath: path,
-        sizeBytes: bytes.lengthInBytes,
-        uploadedAt: DateTime.now(),
-      );
-    } on FirebaseException {
-      throw const CareServiceError(
-          CareServiceErrorType.attachmentUploadFailed);
-    }
+    final ref = FirebaseStorage.instance.ref().child(path);
+    await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+    return HealthAttachment(
+      id: id,
+      url: await ref.getDownloadURL(),
+      storagePath: path,
+      sizeBytes: bytes.lengthInBytes,
+      uploadedAt: DateTime.now(),
+    );
   }
 
   /// Best-effort removal. A file that is already gone (or was never uploaded,

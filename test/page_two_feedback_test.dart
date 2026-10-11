@@ -8,6 +8,8 @@ import 'package:pettogether/l10n/l10n.dart';
 import 'package:pettogether/models/models.dart';
 import 'package:pettogether/services/mock_care_service.dart';
 import 'package:pettogether/store/care_store.dart';
+import 'package:pettogether/store/pro_access.dart';
+import 'package:pettogether/store/purchase_store.dart';
 import 'package:pettogether/theme/app_theme.dart';
 import 'package:pettogether/views/health/health_record_editor_view.dart';
 import 'package:pettogether/views/widgets/task_card.dart';
@@ -33,7 +35,7 @@ void main() {
       title: 'Medication',
       category: CareCategory.medication,
       dueTime: DateTime(2026, 9, 20, 23),
-      createdBy: 'Mingze',
+      createdBy: 'Tester',
     );
 
     await tester.pumpWidget(
@@ -65,6 +67,10 @@ void main() {
       MultiProvider(
         providers: [
           ChangeNotifierProvider<CareStore>.value(value: store),
+          ChangeNotifierProvider(create: (_) => PurchaseStore(apiKey: '')),
+          ChangeNotifierProvider(create: (context) => ProAccess(
+            purchases: context.read<PurchaseStore>(), care: store, currentUid: () => null,
+          )),
           ChangeNotifierProvider(
             create: (_) => AppLanguageStore(AppLanguage.chinese),
           ),
